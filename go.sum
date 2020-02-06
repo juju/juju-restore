@@ -11,6 +11,10 @@ github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d/go.mod h1:2PavIy+JPci
 github.com/juju/juju-restore v0.0.0-20200120060349-547b19d643a3 h1:waBbWPTmS1k+p/vn9pgMRkz98FNUhFmsN0C++o3oIbc=
 github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8 h1:UUHMLvzt/31azWTN/ifGWef4WUqvXk0iRqdhdy/2uzI=
 github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8/go.mod h1:vgyd7OREkbtVEN/8IXZe5Ooef3LQePvuBm9UWj6ZL8U=
+github.com/juju/mgo v0.0.0-20190418114320-e9d4866cb7fc h1:IPMNsbvNOepHFWLz/nXtd7NZvXtHgW9YIvJDhUY/9Tc=
+github.com/juju/mgo v0.0.0-20190418114320-e9d4866cb7fc/go.mod h1:7a/cakyF0q2iwjcD35dn0dgVCdKnLW5j/5iCCAFu7vg=
+github.com/juju/replicaset v0.0.0-20190321104350-501ab59799b1 h1:JnS62byrQ85Opr5ClfJGO87rbbCLyOahLNlr8q+DUYw=
+github.com/juju/replicaset v0.0.0-20190321104350-501ab59799b1/go.mod h1:Y7RITufWVtIsb4ZPBbJ8zmgLlxbiNwYdEVLL2o1ekDE=
 github.com/juju/retry v0.0.0-20180821225755-9058e192b216 h1:/eQL7EJQKFHByJe3DeE8Z36yqManj9UY5zppDoQi4FU=
 github.com/juju/retry v0.0.0-20180821225755-9058e192b216/go.mod h1:OohPQGsr4pnxwD5YljhQ+TZnuVRYpa5irjugL1Yuif4=
 github.com/juju/testing v0.0.0-20191001232224-ce9dec17d28b h1:Rrp0ByJXEjhREMPGTt3aWYjoIsUGCbt21ekbeJcTWv0=

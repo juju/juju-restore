@@ -10,6 +10,9 @@ import (
 	"github.com/juju/errors"
 	"github.com/juju/gnuflag"
 	"github.com/juju/loggo"
+
+	"github.com/juju/juju-restore/core"
+	"github.com/juju/juju-restore/db"
 )
 
 var logger = loggo.GetLogger("juju-restore")
@@ -88,6 +91,27 @@ func (c *restoreCommand) Init(args []string) error {
 
 // Run is part of cmd.Command.
 func (c *restoreCommand) Run(ctx *cmd.Context) error {
+	database, err := db.Dial(db.DialInfo{
+		Hostname: c.hostname,
+		Port:     c.port,
+		Username: c.username,
+		Password: c.password,
+		SSL:      c.ssl,
+	})
+	if err != nil {
+		return errors.Trace(err)
+	}
+	defer func() {
+		err := database.Close()
+		if err != nil {
+			logger.Errorf("error while closing database: %s", err)
+		}
+	}()
+
+	restorer := core.NewRestorer(database)
+	if err := restorer.CheckDatabaseState(); err != nil {
+		return errors.Trace(err)
+	}
 	return nil
 }
 
