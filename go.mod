@@ -14,7 +14,7 @@ require (
 	github.com/juju/testing v0.0.0-20191001232224-ce9dec17d28b // indirect
 	github.com/juju/utils v0.0.0-20200116185830-d40c2fe10647 // indirect
 	github.com/juju/version v0.0.0-20191219164919-81c1be00b9a6 // indirect
-	github.com/kr/pretty v0.2.0 // indirect
+	github.com/kr/pretty v0.2.0
 	github.com/lunixbochs/vtclean v1.0.0 // indirect
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect

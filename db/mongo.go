@@ -27,9 +27,10 @@ type DialInfo struct {
 func Dial(args DialInfo) (core.Database, error) {
 	info := mgo.DialInfo{
 		Addrs:    []string{net.JoinHostPort(args.Hostname, args.Port)},
-		Database: "juju",
+		Database: "admin",
 		Username: args.Username,
 		Password: args.Password,
+		Direct:   true,
 	}
 	if args.SSL {
 		info.DialServer = dialSSL
@@ -38,8 +39,13 @@ func Dial(args DialInfo) (core.Database, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	// We need to set preference to nearest since we're connecting
+	// directly, not to all the nodes in the replicaset.
+	session.SetMode(readPreferenceNearest, false)
 	return &database{session: session}, nil
 }
+
+const readPreferenceNearest = 6
 
 type database struct {
 	session *mgo.Session

@@ -3,7 +3,13 @@
 
 package core
 
-import "github.com/juju/errors"
+import (
+	"github.com/juju/errors"
+	"github.com/juju/loggo"
+	"github.com/kr/pretty"
+)
+
+var logger = loggo.GetLogger("juju-restore.core")
 
 // NewRestorer returns a new restorer for a specific database and
 // backup.
@@ -24,11 +30,16 @@ func (r *Restorer) CheckDatabaseState() error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+
+	logger.Tracef("replicaset: %s", pretty.Sprint(replicaSet))
+
 	var primary *ReplicaSetMember
 	var unhealthyMembers []ReplicaSetMember
 	for _, member := range replicaSet.Members {
 		if member.State == statePrimary {
-			primary = &member
+			// Keep a copy so we don't overwrite in the loop.
+			saved := member
+			primary = &saved
 		}
 		if member.State != statePrimary && member.State != stateSecondary {
 			unhealthyMembers = append(unhealthyMembers, member)
