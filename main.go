@@ -22,7 +22,7 @@ const defaultLogConfig = "<root>=DEBUG"
 var loggingConfig = defaultLogConfig
 
 func main() {
-	_, err := loggo.ReplaceDefaultWriter(cmd.NewWarningWriter(os.Stderr))
+	_, err := loggo.ReplaceDefaultWriter(NewColorWriter(os.Stderr))
 	if err != nil {
 		panic(err)
 	}
@@ -91,6 +91,10 @@ func (c *restoreCommand) Init(args []string) error {
 
 // Run is part of cmd.Command.
 func (c *restoreCommand) Run(ctx *cmd.Context) error {
+	err := loggo.ConfigureLoggers(loggingConfig)
+	if err != nil {
+		return errors.Trace(err)
+	}
 	database, err := db.Dial(db.DialInfo{
 		Hostname: c.hostname,
 		Port:     c.port,
