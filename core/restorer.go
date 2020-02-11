@@ -41,7 +41,8 @@ func (r *Restorer) CheckDatabaseState() error {
 			saved := member
 			primary = &saved
 		}
-		if member.State != statePrimary && member.State != stateSecondary {
+		validState := member.State == statePrimary || member.State == stateSecondary
+		if !member.Healthy || !validState {
 			unhealthyMembers = append(unhealthyMembers, member)
 		}
 	}
