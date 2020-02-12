@@ -6,27 +6,46 @@ package core
 import "fmt"
 
 // Database represents a connection to MongoDB and abstracts the
-// operations the core needs to apply as part of restoring a backup..
+// operations the core needs to apply as part of restoring a backup.
 type Database interface {
+	// ReplicaSet gets the status of the replica set and all members.
 	ReplicaSet() (ReplicaSet, error)
+	// Close terminates the database connection.
 	Close() error
 }
 
 // ReplicaSet holds information about the members of a replica set and
 // its status.
 type ReplicaSet struct {
-	Name    string
+	// Name of the replica set - this will be "juju" for replica sets
+	// that juju has created.
+	Name string
+
+	// Members lists the nodes that make up the set.
 	Members []ReplicaSetMember
 }
 
 // ReplicaSetMember holds status informatian about a database replica
 // set member.
 type ReplicaSetMember struct {
-	ID      int
-	Name    string
-	Self    bool
+	// ID is unique across the nodes.
+	ID int
+
+	// Name will contain the ip-address:port in the case of
+	// Juju-created replica sets.
+	Name string
+
+	// Self will be true for the member we're currently connected to,
+	// false for the others.
+	Self bool
+
+	// Healthy indicates whether there's some problem with the node.
 	Healthy bool
-	State   string
+
+	// State should be PRIMARY or SECONDARY, but if there's a problem
+	// with the replica set it could be any one of the values listed
+	// at https://docs.mongodb.com/manual/reference/replica-states/
+	State string
 }
 
 // String is part of Stringer.
