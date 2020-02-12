@@ -31,7 +31,7 @@ func (r *Restorer) CheckDatabaseState() error {
 		return errors.Trace(err)
 	}
 
-	logger.Tracef("replicaset: %s", pretty.Sprint(replicaSet))
+	logger.Debugf("replicaset status: %s", pretty.Sprint(replicaSet))
 
 	var primary *ReplicaSetMember
 	var unhealthyMembers []ReplicaSetMember

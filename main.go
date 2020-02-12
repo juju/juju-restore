@@ -17,9 +17,10 @@ import (
 
 var logger = loggo.GetLogger("juju-restore")
 
-const defaultLogConfig = "<root>=DEBUG"
-
-var loggingConfig = defaultLogConfig
+const (
+	defaultLogConfig = "<root>=INFO"
+	verboseLogConfig = "<root>=DEBUG"
+)
 
 func main() {
 	_, err := loggo.ReplaceDefaultWriter(NewColorWriter(os.Stderr))
@@ -56,7 +57,9 @@ type restoreCommand struct {
 	username string
 	password string
 
-	backupFile string
+	verbose       bool
+	loggingConfig string
+	backupFile    string
 }
 
 // Info is part of cmd.Command.
@@ -77,7 +80,8 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.BoolVar(&c.ssl, "ssl", true, "use SSL to connect to MongoDB")
 	f.StringVar(&c.username, "username", "admin", "user for connecting to MongoDB (\"\" for no authentication)")
 	f.StringVar(&c.password, "password", "", "password for connecting to MongoDB")
-	f.StringVar(&loggingConfig, "logging-config", defaultLogConfig, "set logging levels")
+	f.StringVar(&c.loggingConfig, "logging-config", defaultLogConfig, "set logging levels")
+	f.BoolVar(&c.verbose, "verbose", false, "more output from restore (debug logging)")
 }
 
 // Init is part of cmd.Command.
@@ -86,12 +90,18 @@ func (c *restoreCommand) Init(args []string) error {
 		return errors.New("missing backup file")
 	}
 	c.backupFile, args = args[0], args[1:]
+	if c.verbose && c.loggingConfig != defaultLogConfig {
+		return errors.New("verbose and logging-config conflict - use one or the other")
+	}
+	if c.verbose {
+		c.loggingConfig = verboseLogConfig
+	}
 	return c.CommandBase.Init(args)
 }
 
 // Run is part of cmd.Command.
 func (c *restoreCommand) Run(ctx *cmd.Context) error {
-	err := loggo.ConfigureLoggers(loggingConfig)
+	err := loggo.ConfigureLoggers(c.loggingConfig)
 	if err != nil {
 		return errors.Trace(err)
 	}
