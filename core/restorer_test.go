@@ -19,52 +19,54 @@ var _ = gc.Suite(&restorerSuite{})
 
 func (s *restorerSuite) TestCheckDatabaseStateUnhealthyMembers(c *gc.C) {
 	r := core.NewRestorer(&fakeDatabase{
-		replicaSet: core.ReplicaSet{
-			Members: []core.ReplicaSetMember{{
-				Healthy: false,
-				ID:      1,
-				Name:    "kaira-ba",
-				State:   "SECONDARY",
-			}, {
-				Healthy: true,
-				ID:      2,
-				Name:    "djula",
-				State:   "PRIMARY",
-			}, {
-				Healthy: true,
-				ID:      3,
-				Name:    "bibi",
-				State:   "OUCHY",
-			}},
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy: false,
+					ID:      1,
+					Name:    "kaira-ba",
+					State:   "SECONDARY",
+				}, {
+					Healthy: true,
+					ID:      2,
+					Name:    "djula",
+					State:   "PRIMARY",
+				}, {
+					Healthy: true,
+					ID:      3,
+					Name:    "bibi",
+					State:   "OUCHY",
+				}},
+			}, nil
 		},
 	})
 
 	err := r.CheckDatabaseState()
 	c.Assert(err, jc.Satisfies, core.IsUnhealthyMembersError)
-	c.Assert(err, gc.ErrorMatches, "unhealthy replica set members: "+
-		`1 "kaira-ba" \(self=false healthy=false state="SECONDARY"\), `+
-		`3 "bibi" \(self=false healthy=true state="OUCHY"\)`)
+	c.Assert(err, gc.ErrorMatches, `unhealthy replica set members: 1 "kaira-ba", 3 "bibi"`)
 }
 
 func (s *restorerSuite) TestCheckDatabaseStateNoPrimary(c *gc.C) {
 	r := core.NewRestorer(&fakeDatabase{
-		replicaSet: core.ReplicaSet{
-			Members: []core.ReplicaSetMember{{
-				Healthy: true,
-				ID:      1,
-				Name:    "kaira-ba",
-				State:   "SECONDARY",
-			}, {
-				Healthy: true,
-				ID:      2,
-				Name:    "djula",
-				State:   "SECONDARY",
-			}, {
-				Healthy: true,
-				ID:      3,
-				Name:    "bibi",
-				State:   "SECONDARY",
-			}},
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy: true,
+					ID:      1,
+					Name:    "kaira-ba",
+					State:   "SECONDARY",
+				}, {
+					Healthy: true,
+					ID:      2,
+					Name:    "djula",
+					State:   "SECONDARY",
+				}, {
+					Healthy: true,
+					ID:      3,
+					Name:    "bibi",
+					State:   "SECONDARY",
+				}},
+			}, nil
 		},
 	})
 	err := r.CheckDatabaseState()
@@ -73,52 +75,72 @@ func (s *restorerSuite) TestCheckDatabaseStateNoPrimary(c *gc.C) {
 
 func (s *restorerSuite) TestCheckDatabaseStateNotPrimary(c *gc.C) {
 	r := core.NewRestorer(&fakeDatabase{
-		replicaSet: core.ReplicaSet{
-			Members: []core.ReplicaSetMember{{
-				Healthy: true,
-				ID:      1,
-				Name:    "kaira-ba",
-				State:   "SECONDARY",
-				Self:    true,
-			}, {
-				Healthy: true,
-				ID:      2,
-				Name:    "djula",
-				State:   "PRIMARY",
-			}, {
-				Healthy: true,
-				ID:      3,
-				Name:    "bibi",
-				State:   "SECONDARY",
-			}},
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy: true,
+					ID:      1,
+					Name:    "kaira-ba",
+					State:   "SECONDARY",
+					Self:    true,
+				}, {
+					Healthy: true,
+					ID:      2,
+					Name:    "djula",
+					State:   "PRIMARY",
+				}, {
+					Healthy: true,
+					ID:      3,
+					Name:    "bibi",
+					State:   "SECONDARY",
+				}},
+			}, nil
 		},
 	})
 	err := r.CheckDatabaseState()
-	c.Assert(err, gc.ErrorMatches, "not running on primary replica set member "+
-		`2 "djula" \(self=false healthy=true state="PRIMARY"\)`,
-	)
+	c.Assert(err, gc.ErrorMatches, `not running on primary replica set member, primary is 2 "djula"`)
 }
 
 func (s *restorerSuite) TestCheckDatabaseStateAllGood(c *gc.C) {
 	r := core.NewRestorer(&fakeDatabase{
-		replicaSet: core.ReplicaSet{
-			Members: []core.ReplicaSetMember{{
-				Healthy: true,
-				ID:      1,
-				Name:    "kaira-ba",
-				State:   "SECONDARY",
-			}, {
-				Healthy: true,
-				ID:      2,
-				Name:    "djula",
-				State:   "PRIMARY",
-				Self:    true,
-			}, {
-				Healthy: true,
-				ID:      3,
-				Name:    "bibi",
-				State:   "SECONDARY",
-			}},
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy: true,
+					ID:      1,
+					Name:    "kaira-ba",
+					State:   "SECONDARY",
+				}, {
+					Healthy: true,
+					ID:      2,
+					Name:    "djula",
+					State:   "PRIMARY",
+					Self:    true,
+				}, {
+					Healthy: true,
+					ID:      3,
+					Name:    "bibi",
+					State:   "SECONDARY",
+				}},
+			}, nil
+		},
+	})
+	err := r.CheckDatabaseState()
+	c.Assert(err, jc.ErrorIsNil)
+}
+
+func (s *restorerSuite) TestCheckDatabaseStateOneMember(c *gc.C) {
+	r := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy: true,
+					ID:      2,
+					Name:    "djula",
+					State:   "PRIMARY",
+					Self:    true,
+				}},
+			}, nil
 		},
 	})
 	err := r.CheckDatabaseState()
@@ -127,18 +149,16 @@ func (s *restorerSuite) TestCheckDatabaseStateAllGood(c *gc.C) {
 
 type fakeDatabase struct {
 	testing.Stub
-	replicaSet core.ReplicaSet
+	replicaSetF func() (core.ReplicaSet, error)
+	closeF      func() error
 }
 
 func (db *fakeDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	db.Stub.MethodCall(db, "ReplicaSet")
-	if err := db.Stub.NextErr(); err != nil {
-		return core.ReplicaSet{}, err
-	}
-	return db.replicaSet, nil
+	return db.replicaSetF()
 }
 
 func (db *fakeDatabase) Close() error {
 	db.Stub.MethodCall(db, "Close")
-	return db.NextErr()
+	return db.closeF()
 }

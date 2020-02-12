@@ -22,8 +22,9 @@ func NewColorWriter(writer io.Writer) loggo.Writer {
 	return &colorWriter{ansiterm.NewWriter(writer)}
 }
 
-// Write implements Writer.
-//   WARNING The message...
+// Write implements Writer. Output is prefixed with log level (colored
+// appropriately), for example WARNING would be yellow in the following:
+//   WARNING the message...
 func (w *colorWriter) Write(entry loggo.Entry) {
 	loggocolor.SeverityColor[entry.Level].Fprintf(w.writer, entry.Level.String())
 	fmt.Fprintf(w.writer, " %s\n", entry.Message)

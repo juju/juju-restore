@@ -50,9 +50,7 @@ type ReplicaSetMember struct {
 
 // String is part of Stringer.
 func (m ReplicaSetMember) String() string {
-	return fmt.Sprintf("%d %q (self=%v healthy=%v state=%q)",
-		m.ID, m.Name, m.Self, m.Healthy, m.State,
-	)
+	return fmt.Sprintf("%d %q", m.ID, m.Name)
 }
 
 const (

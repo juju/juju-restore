@@ -18,7 +18,7 @@ func NewRestorer(db Database) *Restorer {
 }
 
 // Restorer checks the database health and backup file state and
-// restores the backup file into the database.
+// restores the backup file.
 type Restorer struct {
 	db Database
 }
@@ -28,7 +28,7 @@ type Restorer struct {
 func (r *Restorer) CheckDatabaseState() error {
 	replicaSet, err := r.db.ReplicaSet()
 	if err != nil {
-		return errors.Trace(err)
+		return errors.Annotate(err, "getting database replica set")
 	}
 
 	logger.Debugf("replicaset status: %s", pretty.Sprint(replicaSet))
@@ -37,12 +37,14 @@ func (r *Restorer) CheckDatabaseState() error {
 	var unhealthyMembers []ReplicaSetMember
 	for _, member := range replicaSet.Members {
 		if member.State == statePrimary {
-			// Keep a copy so we don't overwrite in the loop.
+			// We need to put member into a new variable, otherwise
+			// the value pointed at by primary will be overwritten the
+			// next time around the loop.
 			saved := member
 			primary = &saved
 		}
 		validState := member.State == statePrimary || member.State == stateSecondary
-		if !member.Healthy || !validState {
+		if !validState || !member.Healthy {
 			unhealthyMembers = append(unhealthyMembers, member)
 		}
 	}
@@ -54,7 +56,7 @@ func (r *Restorer) CheckDatabaseState() error {
 		return errors.Errorf("no primary found in replica set")
 	}
 	if !primary.Self {
-		return errors.Errorf("not running on primary replica set member %s", primary)
+		return errors.Errorf("not running on primary replica set member, primary is %s", primary)
 	}
 
 	return nil
