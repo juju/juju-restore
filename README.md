@@ -10,6 +10,9 @@ primary controller machine and then run it:
 
     ./juju-restore --password mongo-password /path/to/backup/file
 
+The password should be the `oldpassword` field from the machine
+agent's config file: `/var/lib/juju/agents/machine-<n>/agent.conf`
+
 The other connection options (username, hostname, port and ssl) have
 defaults that should be correct unless there is some unusual
 configuration for this MongoDB instance.
