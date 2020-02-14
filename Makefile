@@ -1,10 +1,10 @@
 default: install
 
 build:
-	go build
+	go build ./...
 
-install:
-	go install
+install: build
+	go install ./...
 
 check: build
 	go test ./...

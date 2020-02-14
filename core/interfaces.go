@@ -48,6 +48,11 @@ type ReplicaSetMember struct {
 	State string
 }
 
+// PrecheckResult contains the results of a pre-check run.
+type PrecheckResult struct {
+
+}
+
 // String is part of Stringer.
 func (m ReplicaSetMember) String() string {
 	return fmt.Sprintf("%d %q", m.ID, m.Name)
