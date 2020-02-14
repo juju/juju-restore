@@ -45,7 +45,7 @@ func UserConfirmYes(ctx *cmd.Context) error {
 }
 
 // Notify will post message to an io.Writer of the given cmd.Context.
-// This is provide to ensure that all message that require user attention
+// This ensures that all message that require user attention
 // go consistently to the same writer.
 func Notify(ctx *cmd.Context, message string) {
 	fmt.Fprintf(ctx.Stdout, message)
