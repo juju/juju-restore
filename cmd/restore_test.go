@@ -22,9 +22,6 @@ type restoreSuite struct {
 	command  corecmd.Command
 	database *testDatabase
 	connectF func() (core.Database, func(), error)
-
-	expectedOut string
-	expectedErr string
 }
 
 var _ = gc.Suite(&restoreSuite{})
@@ -50,9 +47,6 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 	s.connectF = func() (core.Database, func(), error) { return s.database, func() {}, nil }
 
 	s.command = cmd.NewRestoreCommandForTest(s.connectF)
-
-	s.expectedOut = ""
-	s.expectedErr = ""
 }
 
 type restoreCommandTestData struct {
