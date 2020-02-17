@@ -3,7 +3,12 @@
 
 package core
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+
+	"github.com/juju/version"
+)
 
 // Database represents a connection to MongoDB and abstracts the
 // operations the core needs to apply as part of restoring a backup.
@@ -50,7 +55,17 @@ type ReplicaSetMember struct {
 
 // PrecheckResult contains the results of a pre-check run.
 type PrecheckResult struct {
+	// BackupDate is the date the backup was finished.
+	BackupDate time.Time
 
+	// ControllerUUID is the controller UUID from which backup was taken.
+	ControllerUUID string
+
+	// JujuVersion is the Juju version of the controller from which backup was taken.
+	JujuVersion version.Number
+
+	// ModelCount is the count of models that this backup contains.
+	ModelCount int64
 }
 
 // String is part of Stringer.
