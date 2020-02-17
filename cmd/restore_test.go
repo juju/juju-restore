@@ -4,12 +4,13 @@
 package cmd_test
 
 import (
+	"strings"
+
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"strings"
 
 	"github.com/juju/juju-restore/cmd"
 	"github.com/juju/juju-restore/core"
