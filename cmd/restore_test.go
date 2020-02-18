@@ -14,6 +14,7 @@ import (
 
 	"github.com/juju/juju-restore/cmd"
 	"github.com/juju/juju-restore/core"
+	"github.com/juju/juju-restore/db"
 )
 
 type restoreSuite struct {
@@ -21,7 +22,7 @@ type restoreSuite struct {
 
 	command  corecmd.Command
 	database *testDatabase
-	connectF func() (core.Database, func(), error)
+	connectF func(db.DialInfo) (core.Database, error)
 }
 
 var _ = gc.Suite(&restoreSuite{})
@@ -44,9 +45,9 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 			}, nil
 		},
 	}
-	s.connectF = func() (core.Database, func(), error) { return s.database, func() {}, nil }
+	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
 
-	s.command = cmd.NewRestoreCommandForTest(s.connectF)
+	s.command = cmd.NewRestoreCommand(s.connectF)
 }
 
 type restoreCommandTestData struct {
@@ -88,7 +89,7 @@ func (s *restoreSuite) TestRestoreAborted(c *gc.C) {
 	ctx, err := s.runCmd(c, "\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
-	s.database.CheckCallNames(c, "ReplicaSet")
+	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 
@@ -109,7 +110,7 @@ func (s *restoreSuite) TestRestoreProceed(c *gc.C) {
 	ctx, err := s.runCmd(c, "y", "backup.file")
 	c.Assert(err, jc.ErrorIsNil)
 
-	s.database.CheckCallNames(c, "ReplicaSet")
+	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 
@@ -147,7 +148,6 @@ func (d *testDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	return d.replicaSetF()
 }
 
-func (d *testDatabase) Close() error {
+func (d *testDatabase) Close() {
 	d.AddCall("Close")
-	return d.NextErr()
 }

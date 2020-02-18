@@ -10,6 +10,7 @@ import (
 	"github.com/juju/loggo"
 
 	"github.com/juju/juju-restore/cmd"
+	"github.com/juju/juju-restore/db"
 )
 
 var logger = loggo.GetLogger("juju-restore")
@@ -30,6 +31,6 @@ func Run(args []string) int {
 		return 2
 	}
 
-	restorer := cmd.NewRestoreCommand(ctx)
+	restorer := cmd.NewRestoreCommand(db.Dial)
 	return corecmd.Main(restorer, ctx, args[1:])
 }

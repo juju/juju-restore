@@ -76,9 +76,8 @@ func (db *database) ReplicaSet() (core.ReplicaSet, error) {
 }
 
 // Close is part of core.Database.
-func (db *database) Close() error {
+func (db *database) Close() {
 	db.session.Close()
-	return nil
 }
 
 func dialSSL(addr *mgo.ServerAddr) (net.Conn, error) {

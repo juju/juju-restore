@@ -15,8 +15,9 @@ import (
 type Database interface {
 	// ReplicaSet gets the status of the replica set and all members.
 	ReplicaSet() (ReplicaSet, error)
+
 	// Close terminates the database connection.
-	Close() error
+	Close()
 }
 
 // ReplicaSet holds information about the members of a replica set and
