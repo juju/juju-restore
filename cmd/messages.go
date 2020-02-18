@@ -29,10 +29,12 @@ Running on primary HA node ✓
 
 All restore pre-checks are completed.
 
-The restore can now proceed.
+You are about to restore a controller from a backup file taken on {{.BackupDate}}. 
+It contains a controller {{.ControllerUUID}} at Juju version {{.JujuVersion}} with {{.ModelCount}} models.
 
-Continue [y/N]? 
-`
+Restore cannot be cleanly aborted from here on.
+
+Are you sure you want to proceed? (y/N): `
 
 func prechecksCompleted(prechecks *core.PrecheckResult) string {
 	t := template.Must(template.New("plugin").Parse(preChecksCompleteTemplate))

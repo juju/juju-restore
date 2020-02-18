@@ -22,8 +22,10 @@ const (
 
 // NewRestoreCommand creates a cmd.Command to check the database and
 // restore the Juju backup.
-func NewRestoreCommand(ctx *cmd.Context) cmd.Command {
-	return &restoreCommand{}
+func NewRestoreCommand(dbConnect func(info db.DialInfo) (core.Database, error)) cmd.Command {
+	command := &restoreCommand{}
+	command.connect = dbConnect
+	return command
 }
 
 type restoreCommand struct {
@@ -38,6 +40,8 @@ type restoreCommand struct {
 	verbose       bool
 	loggingConfig string
 	backupFile    string
+
+	connect func(info db.DialInfo) (core.Database, error)
 }
 
 // Info is part of cmd.Command.
@@ -83,7 +87,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
-	database, err := db.Dial(db.DialInfo{
+	database, err := c.connect(db.DialInfo{
 		Hostname: c.hostname,
 		Port:     c.port,
 		Username: c.username,
@@ -93,12 +97,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
-	defer func() {
-		err := database.Close()
-		if err != nil {
-			logger.Errorf("error while closing database: %s", err)
-		}
-	}()
+	defer database.Close()
 
 	restorer := core.NewRestorer(database)
 
@@ -108,7 +107,6 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	}
 
 	Notify(ctx, prechecksCompleted(&core.PrecheckResult{}))
-
 	if err := UserConfirmYes(ctx); err != nil {
 		return errors.Annotate(err, "restore operation")
 	}
