@@ -150,7 +150,6 @@ func (s *restorerSuite) TestCheckDatabaseStateOneMember(c *gc.C) {
 type fakeDatabase struct {
 	testing.Stub
 	replicaSetF func() (core.ReplicaSet, error)
-	closeF      func() error
 }
 
 func (db *fakeDatabase) ReplicaSet() (core.ReplicaSet, error) {
@@ -158,7 +157,6 @@ func (db *fakeDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	return db.replicaSetF()
 }
 
-func (db *fakeDatabase) Close() error {
+func (db *fakeDatabase) Close() {
 	db.Stub.MethodCall(db, "Close")
-	return db.closeF()
 }
