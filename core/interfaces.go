@@ -98,3 +98,19 @@ const (
 	statePrimary   = "PRIMARY"
 	stateSecondary = "SECONDARY"
 )
+
+// BackupFile represents a specific backup file and provides methods
+// for getting information from it.
+type BackupFile interface {
+	// Metadata retrieves identifying information from the backup file
+	// and returns it.
+	Metadata() (BackupMetadata, error)
+
+	// Close indicates the backup file is not needed anymore so any
+	// temp space used can be freed.
+	Close() error
+}
+
+// BackupMetadata holds interesting information about a backup file.
+type BackupMetadata struct {
+}
