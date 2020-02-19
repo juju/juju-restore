@@ -31,7 +31,7 @@ type ReplicaSet struct {
 	Members []ReplicaSetMember
 }
 
-// ReplicaSetMember holds status informatian about a database replica
+// ReplicaSetMember holds status information about a database replica
 // set member.
 type ReplicaSetMember struct {
 	// ID is unique across the nodes.
@@ -54,6 +54,20 @@ type ReplicaSetMember struct {
 	State string
 }
 
+// ControllerNode defines behavior for a controller node machine.
+type ControllerNode interface {
+	// IP returns IP address of the machine.
+	IP() string
+
+	// Ping checks connection to the controller machine.
+	Ping() error
+}
+
+// String is part of Stringer.
+func (m ReplicaSetMember) String() string {
+	return fmt.Sprintf("%d %q", m.ID, m.Name)
+}
+
 // PrecheckResult contains the results of a pre-check run.
 type PrecheckResult struct {
 	// BackupDate is the date the backup was finished.
@@ -67,11 +81,6 @@ type PrecheckResult struct {
 
 	// ModelCount is the count of models that this backup contains.
 	ModelCount int64
-}
-
-// String is part of Stringer.
-func (m ReplicaSetMember) String() string {
-	return fmt.Sprintf("%d %q", m.ID, m.Name)
 }
 
 const (

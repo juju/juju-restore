@@ -22,9 +22,13 @@ const (
 
 // NewRestoreCommand creates a cmd.Command to check the database and
 // restore the Juju backup.
-func NewRestoreCommand(dbConnect func(info db.DialInfo) (core.Database, error)) cmd.Command {
+func NewRestoreCommand(
+	dbConnect func(info db.DialInfo) (core.Database, error),
+	machineConverter func(member core.ReplicaSetMember) core.ControllerNode,
+) cmd.Command {
 	command := &restoreCommand{}
 	command.connect = dbConnect
+	command.converter = machineConverter
 	return command
 }
 
@@ -42,6 +46,17 @@ type restoreCommand struct {
 	backupFile    string
 
 	connect func(info db.DialInfo) (core.Database, error)
+
+	// manualAgentControl determines if 'juju-restore' or the operator
+	// manages - stops and starts juju and mongo agents - on
+	// other, non-primary controller nodes.
+	// If true, the control is manual and 'juju-restore' will do nothing
+	// to other controller nodes.
+	manualAgentControl bool
+
+	ui        *UserInteractions
+	restorer  *core.Restorer
+	converter func(member core.ReplicaSetMember) core.ControllerNode
 }
 
 // Info is part of cmd.Command.
@@ -64,6 +79,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.password, "password", "", "password for connecting to MongoDB")
 	f.StringVar(&c.loggingConfig, "logging-config", defaultLogConfig, "set logging levels")
 	f.BoolVar(&c.verbose, "verbose", false, "more output from restore (debug logging)")
+	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator stops/starts Juju and Mongo agents on secondary controller nodes in HA")
 }
 
 // Init is part of cmd.Command.
@@ -99,20 +115,61 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	}
 	defer database.Close()
 
-	restorer := core.NewRestorer(database)
-
-	// Pre-checks
-	if err := restorer.CheckDatabaseState(); err != nil {
+	restorer, err := core.NewRestorer(database, c.converter)
+	if err != nil {
 		return errors.Trace(err)
 	}
+	c.restorer = restorer
+	c.ui = NewUserInteractions(ctx)
 
-	Notify(ctx, prechecksCompleted(&core.PrecheckResult{}))
-	if err := UserConfirmYes(ctx); err != nil {
-		return errors.Annotate(err, "restore operation")
+	// Pre-checks
+	if err := c.runPreChecks(); err != nil {
+		return errors.Trace(err)
 	}
-
 	// Actual restorations
 	// Post-checks
 
+	return nil
+}
+
+func (c *restoreCommand) runPreChecks() error {
+	c.ui.Notify("Checking database and replica set health...\n")
+	if err := c.restorer.CheckDatabaseState(); err != nil {
+		return errors.Trace(err)
+	}
+	c.ui.Notify(dbHealthComplete)
+
+	// TODO Backup file checks go here?
+	c.ui.Notify(populate(backupFileTemplate, &core.PrecheckResult{}))
+
+	if c.restorer.IsHA() {
+		if !c.manualAgentControl {
+			c.ui.Notify(releaseAgentsControl)
+			if err := c.ui.UserConfirmYes(); err != nil {
+				if !IsUserAbortedError(err) {
+					return errors.Annotate(err, "releasing controller over agents")
+				}
+				c.manualAgentControl = true
+			}
+			if !c.manualAgentControl {
+				c.ui.Notify("\n\nChecking connectivity to secondary controller machines...\n")
+				connections := c.restorer.CheckSecondaryControllerNodes()
+				c.ui.Notify(populate(nodeConnectivityTemplate, connections))
+				for _, e := range connections {
+					if e != nil {
+						// If even one connection failed, we cannot proceed.
+						return errors.Errorf("'juju-restore' could not connect to all controller machines: controllers' agents cannot be managed")
+					}
+				}
+			}
+		} else {
+			c.ui.Notify(secondaryAgentsMustStop)
+		}
+
+	}
+	c.ui.Notify(preChecksCompleted)
+	if err := c.ui.UserConfirmYes(); err != nil {
+		return errors.Annotate(err, "restore operation")
+	}
 	return nil
 }
