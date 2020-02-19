@@ -3,7 +3,7 @@ default: install
 build:
 	go build ./...
 
-install: build
+install:
 	go install ./...
 
 check: build
