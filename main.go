@@ -11,6 +11,7 @@ import (
 
 	"github.com/juju/juju-restore/cmd"
 	"github.com/juju/juju-restore/db"
+	"github.com/juju/juju-restore/machine"
 )
 
 var logger = loggo.GetLogger("juju-restore")
@@ -31,6 +32,6 @@ func Run(args []string) int {
 		return 2
 	}
 
-	restorer := cmd.NewRestoreCommand(db.Dial)
+	restorer := cmd.NewRestoreCommand(db.Dial, machine.ControllerNodeForReplicaSetMember)
 	return corecmd.Main(restorer, ctx, args[1:])
 }
