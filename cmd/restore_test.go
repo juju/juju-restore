@@ -16,6 +16,7 @@ import (
 	"github.com/juju/juju-restore/cmd"
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
+	"github.com/juju/juju-restore/machine"
 )
 
 type restoreSuite struct {
@@ -48,7 +49,7 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 		},
 	}
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
-	s.converter = core.ControllerNodeForReplicaSetMember
+	s.converter = machine.ControllerNodeForReplicaSetMember
 
 	s.command = cmd.NewRestoreCommand(s.connectF, s.converter)
 }

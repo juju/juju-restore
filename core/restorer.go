@@ -4,13 +4,9 @@
 package core
 
 import (
-	"strings"
-
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
 	"github.com/kr/pretty"
-
-	"github.com/juju/juju-restore/machine"
 )
 
 var logger = loggo.GetLogger("juju-restore.core")
@@ -82,11 +78,4 @@ func (r *Restorer) CheckSecondaryControllerNodes() map[string]error {
 		reachable[memberMachine.IP()] = memberMachine.Ping()
 	}
 	return reachable
-}
-
-// ControllerNodeForReplicaSetMember returns ControllerNode for ReplicaSetMember.
-func ControllerNodeForReplicaSetMember(member ReplicaSetMember) ControllerNode {
-	//	Replica set member name is in the form <machine IP>:<Mongo port>.
-	ip := member.Name[:strings.Index(member.Name, ":")]
-	return machine.NewMachine(ip)
 }

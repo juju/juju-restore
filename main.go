@@ -10,7 +10,7 @@ import (
 	"github.com/juju/loggo"
 
 	"github.com/juju/juju-restore/cmd"
-	"github.com/juju/juju-restore/core"
+	"github.com/juju/juju-restore/machine"
 	"github.com/juju/juju-restore/db"
 )
 
@@ -32,6 +32,6 @@ func Run(args []string) int {
 		return 2
 	}
 
-	restorer := cmd.NewRestoreCommand(db.Dial, core.ControllerNodeForReplicaSetMember)
+	restorer := cmd.NewRestoreCommand(db.Dial, machine.ControllerNodeForReplicaSetMember)
 	return corecmd.Main(restorer, ctx, args[1:])
 }

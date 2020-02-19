@@ -7,9 +7,19 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/juju/errors"
+
+	"github.com/juju/juju-restore/core"
 )
+
+// ControllerNodeForReplicaSetMember returns ControllerNode for ReplicaSetMember.
+func ControllerNodeForReplicaSetMember(member core.ReplicaSetMember) core.ControllerNode {
+	//	Replica set member name is in the form <machine IP>:<Mongo port>.
+	ip := member.Name[:strings.Index(member.Name, ":")]
+	return NewMachine(ip)
+}
 
 type Machine struct {
 	ip string

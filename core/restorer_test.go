@@ -10,6 +10,7 @@ import (
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju-restore/core"
+	"github.com/juju/juju-restore/machine"
 )
 
 type restorerSuite struct {
@@ -21,7 +22,7 @@ var _ = gc.Suite(&restorerSuite{})
 
 func (s *restorerSuite) SetUpTest(c *gc.C) {
 	s.IsolationSuite.SetUpTest(c)
-	s.converter = core.ControllerNodeForReplicaSetMember
+	s.converter = machine.ControllerNodeForReplicaSetMember
 }
 
 func (s *restorerSuite) TestCheckDatabaseStateUnhealthyMembers(c *gc.C) {
