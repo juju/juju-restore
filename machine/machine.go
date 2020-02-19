@@ -18,15 +18,15 @@ import (
 func ControllerNodeForReplicaSetMember(member core.ReplicaSetMember) core.ControllerNode {
 	//	Replica set member name is in the form <machine IP>:<Mongo port>.
 	ip := member.Name[:strings.Index(member.Name, ":")]
-	return NewMachine(ip)
+	return New(ip)
 }
 
 type Machine struct {
 	ip string
 }
 
-// NewMachine returns a machine that satisfies core.ControllerNode.
-func NewMachine(ip string) *Machine {
+// New returns a machine that satisfies core.ControllerNode.
+func New(ip string) *Machine {
 	return &Machine{ip}
 }
 

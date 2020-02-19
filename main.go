@@ -10,8 +10,8 @@ import (
 	"github.com/juju/loggo"
 
 	"github.com/juju/juju-restore/cmd"
-	"github.com/juju/juju-restore/machine"
 	"github.com/juju/juju-restore/db"
+	"github.com/juju/juju-restore/machine"
 )
 
 var logger = loggo.GetLogger("juju-restore")
