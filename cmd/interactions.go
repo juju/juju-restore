@@ -11,6 +11,7 @@ import (
 
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // This file contains helper functions for generic operations commonly needed
@@ -39,25 +40,57 @@ type UserInteractions struct {
 	ctx *cmd.Context
 }
 
+var ReadOneChar = func(ui UserInteractions) (string, error) {
+	// fd 0 is stdin
+	state, err := terminal.MakeRaw(0)
+	if err != nil {
+		logger.Errorf("setting stdin to raw:", err)
+		return "", errors.Trace(err)
+	}
+	defer func() {
+		if err := terminal.Restore(0, state); err != nil {
+			logger.Warningf("warning, failed to restore terminal:", err)
+		}
+	}()
+	in := bufio.NewReader(ui.ctx.Stdin)
+	r, _, err := in.ReadRune()
+	if err != nil {
+		return "", errors.Trace(err)
+	}
+	// Because we've opened different terminal, user response is not visible.
+	// Display user response explicitly to avoid confusion.
+	ui.Notify(fmt.Sprintf("%v\r\n", string(r)))
+	return string(r), nil
+}
+
 // UserConfirmYes returns an error if we do not read a "y" or "yes" from user
 // input.
 func (ui *UserInteractions) UserConfirmYes() error {
-	scanner := bufio.NewScanner(byteAtATimeReader{ui.ctx.Stdin})
-	done := !scanner.Scan()
-	if done {
-		if err := scanner.Err(); err != nil {
-			return errors.Trace(err)
+	prompt := func() (bool, error) {
+		answer, err := ReadOneChar(*ui)
+		if err != nil {
+			return false, errors.Trace(err)
 		}
+		lowCased := strings.ToLower(answer)
+		if lowCased == "y" {
+			return true, nil
+		}
+		if lowCased == "n" || lowCased == "\n" || lowCased == "\r" {
+			return true, errors.Trace(userAbortedError("aborted"))
+		}
+		ui.Notify(fmt.Sprintf("Invalid answer %q. Please answer (y/N) or Enter to default to N: ", answer))
+		return false, nil
 	}
 
-	answer := strings.ToLower(scanner.Text())
-	if done && answer == "" {
-		return io.EOF
+	for {
+		proceed, err := prompt()
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if proceed {
+			return nil
+		}
 	}
-	if answer != "y" {
-		return errors.Trace(userAbortedError("aborted"))
-	}
-	return nil
 }
 
 // Notify will post message to an io.Writer of the given cmd.Context.

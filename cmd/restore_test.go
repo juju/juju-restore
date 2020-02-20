@@ -4,8 +4,6 @@
 package cmd_test
 
 import (
-	"strings"
-
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
@@ -294,8 +292,12 @@ func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.C
 		return nil, err
 	}
 	ctx := cmdtesting.Context(c)
-	stdin := strings.NewReader(input)
-	ctx.Stdin = stdin
+	count := -1
+	s.PatchValue(&cmd.ReadOneChar, func(cmd.UserInteractions) (string, error) {
+		count++
+		return string(input[count]), nil
+	})
+
 	return ctx, s.command.Run(ctx)
 }
 
