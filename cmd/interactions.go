@@ -58,7 +58,7 @@ func ReadOneChar(ctx *cmd.Context) (string, error) {
 	if err != nil {
 		return "", errors.Trace(err)
 	}
-	// Because we are in a raw mode, user response is not visible.
+	// Because we are in raw mode, user response is not visible.
 	// Display user response explicitly to avoid confusion.
 	fmt.Fprintf(ctx.Stdout, fmt.Sprintf("%v\r\n", string(r)))
 	return string(r), nil

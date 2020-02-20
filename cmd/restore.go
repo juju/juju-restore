@@ -28,9 +28,9 @@ func NewRestoreCommand(
 	readFunc func(*cmd.Context) (string, error),
 ) cmd.Command {
 	return &restoreCommand{
-		connect:         dbConnect,
-		converter:       machineConverter,
-		readOneCharFunc: readFunc,
+		connect:     dbConnect,
+		converter:   machineConverter,
+		readOneChar: readFunc,
 	}
 }
 
@@ -56,10 +56,10 @@ type restoreCommand struct {
 	// to other controller nodes.
 	manualAgentControl bool
 
-	ui              *UserInteractions
-	restorer        *core.Restorer
-	converter       func(member core.ReplicaSetMember) core.ControllerNode
-	readOneCharFunc func(*cmd.Context) (string, error)
+	ui          *UserInteractions
+	restorer    *core.Restorer
+	converter   func(member core.ReplicaSetMember) core.ControllerNode
+	readOneChar func(*cmd.Context) (string, error)
 }
 
 // Info is part of cmd.Command.
@@ -123,7 +123,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 		return errors.Trace(err)
 	}
 	c.restorer = restorer
-	c.ui = NewUserInteractions(ctx, c.readOneCharFunc)
+	c.ui = NewUserInteractions(ctx, c.readOneChar)
 
 	// Pre-checks
 	if err := c.runPreChecks(); err != nil {
