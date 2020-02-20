@@ -32,6 +32,6 @@ func Run(args []string) int {
 		return 2
 	}
 
-	restorer := cmd.NewRestoreCommand(db.Dial, machine.ControllerNodeForReplicaSetMember)
+	restorer := cmd.NewRestoreCommand(db.Dial, machine.ControllerNodeForReplicaSetMember, cmd.ReadOneChar)
 	return corecmd.Main(restorer, ctx, args[1:])
 }

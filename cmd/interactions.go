@@ -30,17 +30,18 @@ func IsUserAbortedError(err error) bool {
 }
 
 // NewUserInteractions constructs user interactions with given context.
-func NewUserInteractions(ctx *cmd.Context) *UserInteractions {
-	return &UserInteractions{ctx}
+func NewUserInteractions(ctx *cmd.Context, charFunc func(*cmd.Context) (string, error)) *UserInteractions {
+	return &UserInteractions{ctx, charFunc}
 }
 
 // UserInteractions communicates with the user
 // by providing feedback and by collecting user input.
 type UserInteractions struct {
-	ctx *cmd.Context
+	ctx             *cmd.Context
+	readOneCharFunc func(*cmd.Context) (string, error)
 }
 
-var ReadOneChar = func(ui UserInteractions) (string, error) {
+func ReadOneChar(ctx *cmd.Context) (string, error) {
 	// fd 0 is stdin
 	state, err := terminal.MakeRaw(0)
 	if err != nil {
@@ -52,14 +53,14 @@ var ReadOneChar = func(ui UserInteractions) (string, error) {
 			logger.Warningf("warning, failed to restore terminal:", err)
 		}
 	}()
-	in := bufio.NewReader(ui.ctx.Stdin)
+	in := bufio.NewReader(ctx.Stdin)
 	r, _, err := in.ReadRune()
 	if err != nil {
 		return "", errors.Trace(err)
 	}
-	// Because we've opened different terminal, user response is not visible.
+	// Because we are in a raw mode, user response is not visible.
 	// Display user response explicitly to avoid confusion.
-	ui.Notify(fmt.Sprintf("%v\r\n", string(r)))
+	fmt.Fprintf(ctx.Stdout, fmt.Sprintf("%v\r\n", string(r)))
 	return string(r), nil
 }
 
@@ -67,7 +68,7 @@ var ReadOneChar = func(ui UserInteractions) (string, error) {
 // input.
 func (ui *UserInteractions) UserConfirmYes() error {
 	prompt := func() (bool, error) {
-		answer, err := ReadOneChar(*ui)
+		answer, err := ui.readOneCharFunc(ui.ctx)
 		if err != nil {
 			return false, errors.Trace(err)
 		}
