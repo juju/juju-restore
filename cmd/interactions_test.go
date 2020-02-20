@@ -4,10 +4,9 @@
 package cmd_test
 
 import (
-	"bytes"
-
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
+	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
@@ -18,9 +17,8 @@ import (
 type InteractionsSuite struct {
 	testing.IsolationSuite
 
-	ctx   *corecmd.Context
-	stdin bytes.Buffer
-	ui    *cmd.UserInteractions
+	ctx      *corecmd.Context
+	readFunc func(ctx *corecmd.Context) (string, error)
 }
 
 var _ = gc.Suite(&InteractionsSuite{})
@@ -28,43 +26,62 @@ var _ = gc.Suite(&InteractionsSuite{})
 func (s *InteractionsSuite) SetUpTest(c *gc.C) {
 	s.IsolationSuite.SetUpTest(c)
 	s.ctx = cmdtesting.Context(c)
-	s.ctx.Stdin = &s.stdin
-	s.ui = cmd.NewUserInteractions(s.ctx)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "\r", nil }
 }
 
 func (s *InteractionsSuite) TestUserConfirmEnter(c *gc.C) {
-	s.stdin.WriteString("\n")
-	c.Assert(s.ui.UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 }
 
+func (s *InteractionsSuite) TestUserConfirmFail(c *gc.C) {
+	s.readFunc = func(*corecmd.Context) (string, error) { return "", errors.New("kaboom") }
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), gc.ErrorMatches, "kaboom")
+	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+}
+
+func (s *InteractionsSuite) TestUserConfirmInvalid(c *gc.C) {
+	count := 1
+	s.readFunc = func(*corecmd.Context) (string, error) {
+		if count > 2 {
+			return "y", nil
+		}
+		count++
+		return "s", nil
+	}
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
+	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, `Invalid answer "s". Please answer (y/N) or Enter to default to N: Invalid answer "s". Please answer (y/N) or Enter to default to N: `)
+}
+
 func (s *InteractionsSuite) TestUserConfirmExplicitNo(c *gc.C) {
-	s.stdin.WriteString("n")
-	c.Assert(s.ui.UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "n", nil }
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 
-	s.stdin.WriteString("N")
-	c.Assert(s.ui.UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "N", nil }
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 }
 
 func (s *InteractionsSuite) TestUserConfirmExplicitYes(c *gc.C) {
-	s.stdin.WriteString("y")
-	c.Assert(s.ui.UserConfirmYes(), jc.ErrorIsNil)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "y", nil }
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 
-	s.stdin.WriteString("Y")
-	c.Assert(s.ui.UserConfirmYes(), jc.ErrorIsNil)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "Y", nil }
+	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 }
 
 func (s *InteractionsSuite) TestNotify(c *gc.C) {
-	s.ui.Notify("must be fun to be on stdout")
+	cmd.NewUserInteractions(s.ctx, s.readFunc).Notify("must be fun to be on stdout")
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "must be fun to be on stdout")
 }

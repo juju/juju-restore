@@ -25,11 +25,13 @@ const (
 func NewRestoreCommand(
 	dbConnect func(info db.DialInfo) (core.Database, error),
 	machineConverter func(member core.ReplicaSetMember) core.ControllerNode,
+	readFunc func(*cmd.Context) (string, error),
 ) cmd.Command {
-	command := &restoreCommand{}
-	command.connect = dbConnect
-	command.converter = machineConverter
-	return command
+	return &restoreCommand{
+		connect:     dbConnect,
+		converter:   machineConverter,
+		readOneChar: readFunc,
+	}
 }
 
 type restoreCommand struct {
@@ -54,9 +56,10 @@ type restoreCommand struct {
 	// to other controller nodes.
 	manualAgentControl bool
 
-	ui        *UserInteractions
-	restorer  *core.Restorer
-	converter func(member core.ReplicaSetMember) core.ControllerNode
+	ui          *UserInteractions
+	restorer    *core.Restorer
+	converter   func(member core.ReplicaSetMember) core.ControllerNode
+	readOneChar func(*cmd.Context) (string, error)
 }
 
 // Info is part of cmd.Command.
@@ -120,7 +123,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 		return errors.Trace(err)
 	}
 	c.restorer = restorer
-	c.ui = NewUserInteractions(ctx)
+	c.ui = NewUserInteractions(ctx, c.readOneChar)
 
 	// Pre-checks
 	if err := c.runPreChecks(); err != nil {

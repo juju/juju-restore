@@ -4,8 +4,6 @@
 package cmd_test
 
 import (
-	"strings"
-
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
@@ -22,10 +20,10 @@ import (
 type restoreSuite struct {
 	testing.IsolationSuite
 
-	command   corecmd.Command
 	database  *testDatabase
 	connectF  func(db.DialInfo) (core.Database, error)
 	converter func(member core.ReplicaSetMember) core.ControllerNode
+	readFunc  func(*corecmd.Context) (string, error)
 }
 
 var _ = gc.Suite(&restoreSuite{})
@@ -50,8 +48,7 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 	}
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
 	s.converter = machine.ControllerNodeForReplicaSetMember
-
-	s.command = cmd.NewRestoreCommand(s.connectF, s.converter)
+	s.readFunc = func(*corecmd.Context) (string, error) { return "", nil }
 }
 
 type restoreCommandTestData struct {
@@ -78,9 +75,10 @@ var commandArgsTests = []restoreCommandTestData{
 }
 
 func (s *restoreSuite) TestArgParsing(c *gc.C) {
+	command := cmd.NewRestoreCommand(s.connectF, s.converter, s.readFunc)
 	for i, test := range commandArgsTests {
 		c.Logf("%d: %s", i, test.title)
-		err := cmdtesting.InitCommand(s.command, test.args)
+		err := cmdtesting.InitCommand(command, test.args)
 		if test.errMatch == "" {
 			c.Assert(err, jc.ErrorIsNil)
 		} else {
@@ -162,7 +160,6 @@ func (s *restoreSuite) TestRestoreHAConnectionFail(c *gc.C) {
 		node.SetErrors(errors.New("kaboom"))
 		return node
 	}
-	s.command = cmd.NewRestoreCommand(s.connectF, s.converter)
 	ctx, err := s.runCmd(c, "y\r\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, `'juju-restore' could not connect to all controller machines: controllers' agents cannot be managed`)
 
@@ -196,7 +193,6 @@ func (s *restoreSuite) TestRestoreHAConnectionOk(c *gc.C) {
 	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
 		return &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 	}
-	s.command = cmd.NewRestoreCommand(s.connectF, s.converter)
 	ctx, err := s.runCmd(c, "y\r\n\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
@@ -289,14 +285,18 @@ Are you sure you want to proceed? (y/N): `[1:])
 }
 
 func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.Context, error) {
-	err := cmdtesting.InitCommand(s.command, args)
+	count := -1
+	s.readFunc = func(*corecmd.Context) (string, error) {
+		count++
+		return string(input[count]), nil
+	}
+	command := cmd.NewRestoreCommand(s.connectF, s.converter, s.readFunc)
+	err := cmdtesting.InitCommand(command, args)
 	if err != nil {
 		return nil, err
 	}
 	ctx := cmdtesting.Context(c)
-	stdin := strings.NewReader(input)
-	ctx.Stdin = stdin
-	return ctx, s.command.Run(ctx)
+	return ctx, command.Run(ctx)
 }
 
 type testDatabase struct {
