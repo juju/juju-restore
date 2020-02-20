@@ -5,6 +5,7 @@ package cmd_test
 
 import (
 	"bytes"
+
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
