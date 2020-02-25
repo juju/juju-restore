@@ -5,7 +5,6 @@
 package backup
 
 import (
-	"archive/tar"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/utils/tar"
 
 	"github.com/juju/juju-restore/core"
 )
@@ -44,9 +44,10 @@ func Open(path string, tempRoot string) (_ core.BackupFile, err error) {
 	if err != nil {
 		return nil, errors.Annotatef(err, "extracting backup to %q", destDir)
 	}
-	// Inside the extracted file is another root.tar file that we can
+	// Inside the extracted directory is another root.tar file that we can
 	// extract in place.
-	err = extractFiles(filepath.Join(destDir, "root.tar"), destDir)
+	extractedDir := filepath.Join(destDir, "juju-backup")
+	err = extractFiles(filepath.Join(extractedDir, "root.tar"), extractedDir)
 	if err != nil {
 		return nil, errors.Annotatef(err, "extracting root.tar in %q", destDir)
 	}
@@ -75,7 +76,7 @@ func extractFiles(path string, dest string) error {
 	logger.Debugf("extracting %q to %q", path, dest)
 	source, err := os.Open(path)
 	if err != nil {
-		return errors.Annotatef(err, "opening %q", path)
+		return errors.Trace(err)
 	}
 	defer source.Close()
 
@@ -89,46 +90,5 @@ func extractFiles(path string, dest string) error {
 		tarSource = gzReader
 	}
 
-	tarReader := tar.NewReader(tarSource)
-
-	for {
-		header, err := tarReader.Next()
-		switch {
-		case err == io.EOF:
-			return nil
-		case err != nil:
-			return errors.Annotatef(err, "reading header from %q", path)
-		}
-		target := filepath.Join(dest, header.Name)
-		logger.Debugf("extracting %q")
-
-		switch header.Typeflag {
-
-		case tar.TypeDir:
-			// Create the directory if it's new.
-			if _, err := os.Stat(target); err != nil {
-				if err := os.MkdirAll(target, 0755); err != nil {
-					return errors.Annotatef(err, "making %q", target)
-				}
-			}
-
-		case tar.TypeReg:
-			if err := extractFile(header, tarReader, target); err != nil {
-				return errors.Trace(err)
-			}
-		}
-	}
-}
-
-func extractFile(header *tar.Header, source io.Reader, target string) error {
-	outFile, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-	if err != nil {
-		return errors.Annotatef(err, "opening %q", target)
-	}
-	defer outFile.Close()
-
-	if _, err := io.Copy(outFile, source); err != nil {
-		return errors.Annotatef(err, "extracting %q", target)
-	}
-	return nil
+	return errors.Trace(tar.UntarFiles(tarSource, dest))
 }
