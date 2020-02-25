@@ -9,6 +9,7 @@ import (
 	"github.com/juju/gnuflag"
 	"github.com/juju/loggo"
 
+	"github.com/juju/juju-restore/backup"
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
 )
@@ -46,6 +47,7 @@ type restoreCommand struct {
 	verbose       bool
 	loggingConfig string
 	backupFile    string
+	tempRoot      string
 
 	connect func(info db.DialInfo) (core.Database, error)
 
@@ -89,6 +91,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.BoolVar(&c.verbose, "verbose", false, "more output from restore (debug logging)")
 	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator manages secondary controller nodes in HA, e.g stops/starts Juju and Mongo agents")
 	f.BoolVar(&c.restart, "rs", false, "REMOVE ME")
+	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
 }
 
 // Init is part of cmd.Command.
@@ -126,7 +129,13 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	}
 	defer database.Close()
 
-	restorer, err := core.NewRestorer(database, c.converter)
+	backup, err := backup.Open(c.backupFile, c.tempRoot)
+	if err != nil {
+		return errors.Annotatef(err, "unpacking backup file %q under %q", c.backupFile, c.tempRoot)
+	}
+	defer backup.Close()
+
+	restorer, err := core.NewRestorer(database, backup, c.converter)
 	if err != nil {
 		return errors.Trace(err)
 	}
