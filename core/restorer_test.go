@@ -4,10 +4,8 @@
 package core_test
 
 import (
-	"fmt"
 	"regexp"
 
-	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
@@ -451,12 +449,4 @@ func (f *fakeControllerNode) StopAgent() error {
 func (f *fakeControllerNode) StartAgent() error {
 	f.Stub.MethodCall(f, "StartAgent")
 	return f.NextErr()
-}
-
-type fakeFeedback struct {
-	out *cmd.Context
-}
-
-func (f *fakeFeedback) Notify(message string) {
-	fmt.Fprintf(f.out.Stdout, message)
 }
