@@ -52,6 +52,16 @@ type ReplicaSetMember struct {
 	// with the replica set it could be any one of the values listed
 	// at https://docs.mongodb.com/manual/reference/replica-states/
 	State string
+
+	// JujuMachineID has Juju machine ID for this controller node.
+	// This information is needed when trying to manage Juju agents,
+	// their config or any other artifacts created by Juju.
+	JujuMachineID string
+}
+
+// String is part of Stringer.
+func (m ReplicaSetMember) String() string {
+	return fmt.Sprintf("%d %q (juju machine %v)", m.ID, m.Name, m.JujuMachineID)
 }
 
 // ControllerNode defines behavior for a controller node machine.
@@ -61,11 +71,12 @@ type ControllerNode interface {
 
 	// Ping checks connection to the controller machine.
 	Ping() error
-}
 
-// String is part of Stringer.
-func (m ReplicaSetMember) String() string {
-	return fmt.Sprintf("%d %q", m.ID, m.Name)
+	// StopAgent stops jujud-machine-* service on the controller node.
+	StopAgent() error
+
+	// StartAgent starts jujud-machine-* service on the controller node.
+	StartAgent() error
 }
 
 // PrecheckResult contains the results of a pre-check run.
