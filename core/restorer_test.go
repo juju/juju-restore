@@ -5,12 +5,13 @@ package core_test
 
 import (
 	"fmt"
+	"regexp"
+
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"regexp"
 
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/machine"

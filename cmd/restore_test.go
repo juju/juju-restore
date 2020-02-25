@@ -7,13 +7,14 @@ import (
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
+	"github.com/juju/testing"
+	jc "github.com/juju/testing/checkers"
+	gc "gopkg.in/check.v1"
+
 	"github.com/juju/juju-restore/cmd"
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
 	"github.com/juju/juju-restore/machine"
-	"github.com/juju/testing"
-	jc "github.com/juju/testing/checkers"
-	gc "gopkg.in/check.v1"
 )
 
 type restoreSuite struct {
