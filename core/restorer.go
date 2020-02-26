@@ -4,9 +4,13 @@
 package core
 
 import (
+	"time"
+
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/utils/clock"
 	"github.com/kr/pretty"
+	"gopkg.in/retry.v1"
 )
 
 var logger = loggo.GetLogger("juju-restore.core")
@@ -102,34 +106,46 @@ func (r *Restorer) StartAgents(startSecondaries bool) map[string]error {
 	return r.manageAgents(startSecondaries, func(n ControllerNode) error { return n.StartAgent() }, true)
 }
 
-// TODO Need to figure out how to wait for stability....
-// Is this enough?..
 func (r *Restorer) replicaSetStabilised() {
-	// We want to refresh replicaset as we go...
-	attempt := 0
-	// keep a copy of replicaset, just in case
+	// keep a copy of replicaset, in case all exponential attempts fail.
 	pre := r.replicaSet
-	for {
-		attempt++
-		logger.Debugf("checking db health, attempt %d", attempt)
+
+	checkReplicaset := func() error {
 		replicaSet, err := r.db.ReplicaSet()
 		if err != nil {
-			logger.Errorf("getting database replica set: %v", err)
-			continue
+			return errors.Annotate(err, "getting database replica set")
 		}
+		// We want to refresh replicaset as we go...
 		r.replicaSet = replicaSet
 		err = r.CheckDatabaseState()
+		if err != nil {
+			return errors.Annotate(err, "replicaset is sick")
+		}
+		return nil
+	}
+
+	attempt := retry.Start(
+		retry.LimitCount(20, retry.Exponential{
+			Initial: 5 * time.Second,
+			Factor:  1.6,
+		}),
+		clock.WallClock,
+	)
+
+	var err error
+	for attempt.Next() {
+		err = checkReplicaset()
 		if err == nil {
-			logger.Debugf("replicaset is healthy again")
-			break
-		} else {
-			logger.Debugf(" replicaset is sick: %v", err)
-		}
-		if attempt == 20 {
-			r.replicaSet = pre
-			logger.Debugf("Could not finish waiting for healthy replicaset")
+			logger.Debugf("replicaset is healthy")
 			break
 		}
+		if attempt.More() {
+			logger.Debugf("replicaset is sick (retrying, attempt %v): %v", attempt.Count(), err)
+		}
+	}
+	if err != nil {
+		r.replicaSet = pre
+		logger.Errorf("Could not finish waiting for healthy replicaset")
 	}
 }
 
