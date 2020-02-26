@@ -85,7 +85,9 @@ func (r *Restorer) CheckSecondaryControllerNodes() map[string]error {
 // as well.
 // The agents on the primary node are always stopped last.
 func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
-	return r.manageAgents(stopSecondaries, func(n ControllerNode) error { return n.StopAgent() })
+	// When stopping agents we want to stop primary last in an attempt to
+	// avoid re-election now - we are stopping anyway.
+	return r.manageAgents(stopSecondaries, func(n ControllerNode) error { return n.StopAgent() }, false)
 }
 
 // StartAgents starts controller agents, jujud-machine-*.
@@ -95,7 +97,9 @@ func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
 func (r *Restorer) StartAgents(startSecondaries bool) map[string]error {
 	// Check replicaset is healthy before restarting agents.
 	r.replicaSetStabilised()
-	return r.manageAgents(startSecondaries, func(n ControllerNode) error { return n.StartAgent() })
+	// When starting agents we want to start primary first in an attempt to
+	// preserve it being a primary.
+	return r.manageAgents(startSecondaries, func(n ControllerNode) error { return n.StartAgent() }, true)
 }
 
 // TODO Need to figure out how to wait for stability....
@@ -129,9 +133,10 @@ func (r *Restorer) replicaSetStabilised() {
 	}
 }
 
-func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error) map[string]error {
+func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error, primaryFirst bool) map[string]error {
 	var primary ControllerNode
 	result := map[string]error{}
+	secondaries := []ControllerNode{}
 	for _, member := range r.replicaSet.Members {
 		memberMachine := r.convertToControllerNode(member)
 		if member.Self {
@@ -139,9 +144,17 @@ func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error
 			continue
 		}
 		if all {
-			result[memberMachine.IP()] = operation(memberMachine)
+			secondaries = append(secondaries, memberMachine)
 		}
 	}
-	result[primary.IP()] = operation(primary)
+	if primaryFirst {
+		result[primary.IP()] = operation(primary)
+	}
+	for _, n := range secondaries {
+		result[n.IP()] = operation(n)
+	}
+	if !primaryFirst {
+		result[primary.IP()] = operation(primary)
+	}
 	return result
 }

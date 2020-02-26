@@ -136,8 +136,8 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err := c.runPreChecks(); err != nil {
 		return errors.Trace(err)
 	}
-	// Actual restorations
-	if err := c.restoration(); err != nil {
+	// Actual restore
+	if err := c.restore(); err != nil {
 		return errors.Trace(err)
 	}
 	// Post-checks
@@ -189,7 +189,7 @@ func (c *restoreCommand) runPreChecks() error {
 	return nil
 }
 
-func (c *restoreCommand) restoration() error {
+func (c *restoreCommand) restore() error {
 	// Stop juju agents.
 	c.ui.Notify("\nStopping Juju agents...\n")
 	if err := c.manipulateAgents(c.restorer.StopAgents); err != nil {
