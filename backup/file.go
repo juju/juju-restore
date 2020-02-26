@@ -6,6 +6,7 @@ package backup
 
 import (
 	"compress/gzip"
+	"encoding/binary"
 	"io"
 	"io/ioutil"
 	"os"
@@ -24,7 +25,9 @@ var logger = loggo.GetLogger("juju-restore.backup")
 const (
 	toplevelDir  = "juju-backup"
 	rootTarFile  = "root.tar"
-	metadataFile = "metadata.json"
+	metadataFile = "juju-backup/metadata.json"
+	logsDir      = "juju-backup/dump/logs"
+	modelsFile   = "juju-backup/dump/juju/models.bson"
 )
 
 // Open unpacks a backup file in a temp location and returns a
@@ -68,8 +71,59 @@ type expandedBackup struct {
 // Metadata returns the collected info from the backup file. Part of
 // core.BackupFile.
 func (b *expandedBackup) Metadata() (core.BackupMetadata, error) {
-	// TODO(babbageclunk): this
-	return core.BackupMetadata{}, nil
+	result, err := readMetadataJSON(filepath.Join(b.dir, metadataFile))
+	if err != nil {
+		return core.BackupMetadata{}, errors.Annotate(err, "reading metadata")
+	}
+	result.ContainsLogs, err = b.containsLogs()
+	if err != nil {
+		return core.BackupMetadata{}, errors.Annotate(err, "checking for logs")
+	}
+	result.ModelCount, err = b.countModels()
+	if err != nil {
+		return core.BackupMetadata{}, errors.Annotate(err, "counting models")
+	}
+	return result, nil
+}
+
+func (b *expandedBackup) containsLogs() (bool, error) {
+	items, err := ioutil.ReadDir(filepath.Join(b.dir, logsDir))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, errors.Trace(err)
+	}
+	return len(items) > 0, nil
+}
+
+func (b *expandedBackup) countModels() (int, error) {
+	source, err := os.Open(filepath.Join(b.dir, modelsFile))
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	defer source.Close()
+
+	var (
+		count int
+		size  uint32
+	)
+	for {
+		// BSON docs always start with a 32-bit little-endian size, so
+		// skip forward counting the docs.
+		err := binary.Read(source, binary.LittleEndian, &size)
+		if err == io.EOF {
+			return count, nil
+		}
+		if err != nil {
+			return 0, errors.Trace(err)
+		}
+		_, err = source.Seek(int64(size), io.SeekCurrent)
+		if err != nil {
+			return 0, errors.Trace(err)
+		}
+		count++
+	}
 }
 
 // Close is part of core.BackupFile. It removes the temp directory the

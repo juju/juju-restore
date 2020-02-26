@@ -9,7 +9,6 @@ import (
 	"github.com/juju/gnuflag"
 	"github.com/juju/loggo"
 
-	"github.com/juju/juju-restore/backup"
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
 )
@@ -25,11 +24,13 @@ const (
 // restore the Juju backup.
 func NewRestoreCommand(
 	dbConnect func(info db.DialInfo) (core.Database, error),
+	openBackup func(path, tempRoot string) (core.BackupFile, error),
 	machineConverter func(member core.ReplicaSetMember) core.ControllerNode,
 	readFunc func(*cmd.Context) (string, error),
 ) cmd.Command {
 	return &restoreCommand{
 		connect:     dbConnect,
+		openBackup:  openBackup,
 		converter:   machineConverter,
 		readOneChar: readFunc,
 	}
@@ -49,7 +50,8 @@ type restoreCommand struct {
 	backupFile    string
 	tempRoot      string
 
-	connect func(info db.DialInfo) (core.Database, error)
+	connect    func(info db.DialInfo) (core.Database, error)
+	openBackup func(path, tempRoot string) (core.BackupFile, error)
 
 	// manualAgentControl determines if 'juju-restore' or the operator
 	// manages - stops and starts juju and mongo agents - on
@@ -129,7 +131,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	}
 	defer database.Close()
 
-	backup, err := backup.Open(c.backupFile, c.tempRoot)
+	backup, err := c.openBackup(c.backupFile, c.tempRoot)
 	if err != nil {
 		return errors.Annotatef(err, "unpacking backup file %q under %q", c.backupFile, c.tempRoot)
 	}

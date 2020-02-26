@@ -52,7 +52,7 @@ func (s *restorerSuite) TestCheckDatabaseStateUnhealthyMembers(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, jc.Satisfies, core.IsUnhealthyMembersError)
@@ -84,7 +84,7 @@ func (s *restorerSuite) TestCheckDatabaseStateNoPrimary(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, gc.ErrorMatches, "no primary found in replica set")
@@ -116,7 +116,7 @@ func (s *restorerSuite) TestCheckDatabaseStateNotPrimary(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, gc.ErrorMatches, regexp.QuoteMeta(`not running on primary replica set member, primary is 2 "djula" (juju machine 2)`))
@@ -148,7 +148,7 @@ func (s *restorerSuite) TestCheckDatabaseStateAllGood(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, jc.ErrorIsNil)
@@ -169,7 +169,7 @@ func (s *restorerSuite) TestCheckDatabaseStateOneMember(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, jc.ErrorIsNil)
@@ -189,7 +189,7 @@ func (s *restorerSuite) TestCheckDatabaseStateMissingJujuID(c *gc.C) {
 				}},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	err = r.CheckDatabaseState()
 	c.Assert(err, gc.ErrorMatches, regexp.QuoteMeta(`unhealthy replica set members: 2 "djula" (juju machine )`))
@@ -211,7 +211,7 @@ func (s *restorerSuite) TestCheckSecondaryControllerNodesSkipsSelf(c *gc.C) {
 				},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(r.CheckSecondaryControllerNodes(), gc.DeepEquals, map[string]error{})
 }
@@ -239,7 +239,7 @@ func (s *restorerSuite) checkSecondaryControllerNodes(c *gc.C, expected map[stri
 				},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(r.CheckSecondaryControllerNodes(), gc.DeepEquals, expected)
 }
@@ -301,7 +301,7 @@ func (s *restorerSuite) checkManagedAgents(c *gc.C, t agentMgmtTest) []*fakeCont
 				},
 			}, nil
 		},
-	}, s.converter)
+	}, &fakeBackup{}, s.converter)
 	c.Assert(err, jc.ErrorIsNil)
 
 	result := t.mgmtFunc(r, t.secondaries)
@@ -449,4 +449,19 @@ func (f *fakeControllerNode) StopAgent() error {
 func (f *fakeControllerNode) StartAgent() error {
 	f.Stub.MethodCall(f, "StartAgent")
 	return f.NextErr()
+}
+
+type fakeBackup struct {
+	testing.Stub
+	metadataF func() (core.BackupMetadata, error)
+}
+
+func (b *fakeBackup) Metadata() (core.BackupMetadata, error) {
+	b.Stub.MethodCall(b, "Metadata")
+	return b.metadataF()
+}
+
+func (b *fakeBackup) Close() error {
+	b.Stub.MethodCall(b, "Close")
+	return b.Stub.NextErr()
 }

@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
-	github.com/juju/clock v0.0.0-20190205081909-9c5c9712527c // indirect
+	github.com/juju/clock v0.0.0-20190205081909-9c5c9712527c
 	github.com/juju/cmd v0.0.0-20200108104440-8e43f3faa5c9
 	github.com/juju/collections v0.0.0-20180717171555-9be91dc79b7c
 	github.com/juju/errors v0.0.0-20190930114154-d42613fe1ab9
@@ -24,6 +24,7 @@ require (
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15
 	gopkg.in/juju/names.v3 v3.0.0-20200131033104-139ecaca454c // indirect
 	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
+	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 )
 

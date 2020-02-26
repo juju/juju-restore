@@ -21,7 +21,9 @@ type restoreSuite struct {
 	testing.IsolationSuite
 
 	database  *testDatabase
+	backup    *fakeBackup
 	connectF  func(db.DialInfo) (core.Database, error)
+	openF     func(string, string) (core.BackupFile, error)
 	converter func(member core.ReplicaSetMember) core.ControllerNode
 	readFunc  func(*corecmd.Context) (string, error)
 }
@@ -47,7 +49,9 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 			}, nil
 		},
 	}
+	s.backup = &fakeBackup{}
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
+	s.openF = func(string, string) (core.BackupFile, error) { return s.backup, nil }
 	s.converter = machine.ControllerNodeForReplicaSetMember
 	s.readFunc = func(*corecmd.Context) (string, error) { return "", nil }
 }
@@ -76,7 +80,7 @@ var commandArgsTests = []restoreCommandTestData{
 }
 
 func (s *restoreSuite) TestArgParsing(c *gc.C) {
-	command := cmd.NewRestoreCommand(s.connectF, s.converter, s.readFunc)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc)
 	for i, test := range commandArgsTests {
 		c.Logf("%d: %s", i, test.title)
 		err := cmdtesting.InitCommand(command, test.args)
@@ -435,7 +439,7 @@ func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.C
 		count++
 		return string(input[count]), nil
 	}
-	command := cmd.NewRestoreCommand(s.connectF, s.converter, s.readFunc)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc)
 	err := cmdtesting.InitCommand(command, args)
 	if err != nil {
 		return nil, err
@@ -481,4 +485,19 @@ func (f *fakeControllerNode) StopAgent() error {
 func (f *fakeControllerNode) StartAgent() error {
 	f.Stub.MethodCall(f, "StartAgent")
 	return f.NextErr()
+}
+
+type fakeBackup struct {
+	testing.Stub
+	metadataF func() (core.BackupMetadata, error)
+}
+
+func (b *fakeBackup) Metadata() (core.BackupMetadata, error) {
+	b.Stub.MethodCall(b, "Metadata")
+	return b.metadataF()
+}
+
+func (b *fakeBackup) Close() error {
+	b.Stub.MethodCall(b, "Close")
+	return b.Stub.NextErr()
 }

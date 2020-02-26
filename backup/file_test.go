@@ -8,13 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/juju/collections/set"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/version"
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju-restore/backup"
+	"github.com/juju/juju-restore/core"
 )
 
 type backupSuite struct {
@@ -72,4 +75,26 @@ func (s *backupSuite) TestOpenMissingRoot(c *gc.C) {
 	opened, err := backup.Open(path, s.dir)
 	c.Assert(err, gc.ErrorMatches, `extracting root.tar in ".*": open .*/root.tar: no such file or directory`)
 	c.Assert(opened, gc.Equals, nil)
+}
+
+func (s *backupSuite) TestMetadata(c *gc.C) {
+	path := filepath.Join("testdata", "valid-backup.tar.gz")
+	opened, err := backup.Open(path, s.dir)
+	c.Assert(err, jc.ErrorIsNil)
+	defer opened.Close()
+
+	metadata, err := opened.Metadata()
+	c.Assert(err, jc.ErrorIsNil)
+	expectCreated, err := time.Parse(time.RFC3339, "2020-02-25T04:12:41.038760008Z")
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(metadata, gc.Equals, core.BackupMetadata{
+		FormatVersion:       0,
+		ControllerModelUUID: "e2a6a1e5-abea-4393-8593-5a45ae53ab97",
+		JujuVersion:         version.MustParse("2.8-beta1.1"),
+		Series:              "bionic",
+		BackupCreated:       expectCreated,
+		Hostname:            "juju-53ab97-0",
+		ContainsLogs:        false,
+		ModelCount:          2,
+	})
 }

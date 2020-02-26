@@ -116,7 +116,7 @@ type BackupMetadata struct {
 	// FormatVersion tells us which version of the backup structure
 	// this file uses. If one wasn't specified in the file, it's
 	// version 0.
-	FormatVersion int
+	FormatVersion int64
 
 	// ControllerModelUUID is the model UUID of the backed up
 	// controller model.
