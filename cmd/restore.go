@@ -60,6 +60,11 @@ type restoreCommand struct {
 	restorer    *core.Restorer
 	converter   func(member core.ReplicaSetMember) core.ControllerNode
 	readOneChar func(*cmd.Context) (string, error)
+
+	// To be used as an option during development to enable an easier way to re-start
+	// all agents in HA federation.
+	// XXXXXXXXXXXXX Remove ME
+	restart bool
 }
 
 // Info is part of cmd.Command.
@@ -82,7 +87,8 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.password, "password", "", "password for connecting to MongoDB")
 	f.StringVar(&c.loggingConfig, "logging-config", defaultLogConfig, "set logging levels")
 	f.BoolVar(&c.verbose, "verbose", false, "more output from restore (debug logging)")
-	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator stops/starts Juju and Mongo agents on secondary controller nodes in HA")
+	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator manages secondary controller nodes in HA, e.g stops/starts Juju and Mongo agents")
+	f.BoolVar(&c.restart, "rs", false, "REMOVE ME")
 }
 
 // Init is part of cmd.Command.
@@ -106,6 +112,8 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+	c.ui = NewUserInteractions(ctx, c.readOneChar)
+	c.ui.Notify("Connecting to database...\n")
 	database, err := c.connect(db.DialInfo{
 		Hostname: c.hostname,
 		Port:     c.port,
@@ -123,15 +131,19 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 		return errors.Trace(err)
 	}
 	c.restorer = restorer
-	c.ui = NewUserInteractions(ctx, c.readOneChar)
 
 	// Pre-checks
 	if err := c.runPreChecks(); err != nil {
 		return errors.Trace(err)
 	}
-	// Actual restorations
+	// Actual restore
+	if err := c.restore(); err != nil {
+		return errors.Trace(err)
+	}
 	// Post-checks
-
+	if err := c.runPostChecks(); err != nil {
+		return errors.Trace(err)
+	}
 	return nil
 }
 
@@ -157,7 +169,7 @@ func (c *restoreCommand) runPreChecks() error {
 			if !c.manualAgentControl {
 				c.ui.Notify("\n\nChecking connectivity to secondary controller machines...\n")
 				connections := c.restorer.CheckSecondaryControllerNodes()
-				c.ui.Notify(populate(nodeConnectivityTemplate, connections))
+				c.ui.Notify(populate(nodesTemplate, connections))
 				for _, e := range connections {
 					if e != nil {
 						// If even one connection failed, we cannot proceed.
@@ -173,6 +185,42 @@ func (c *restoreCommand) runPreChecks() error {
 	c.ui.Notify(preChecksCompleted)
 	if err := c.ui.UserConfirmYes(); err != nil {
 		return errors.Annotate(err, "restore operation")
+	}
+	return nil
+}
+
+func (c *restoreCommand) restore() error {
+	// Stop juju agents.
+	c.ui.Notify("\nStopping Juju agents...\n")
+	if err := c.manipulateAgents(c.restorer.StopAgents); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
+func (c *restoreCommand) runPostChecks() error {
+	if !c.restart {
+		return nil
+	}
+	c.ui.Notify("\nStarting Juju agents...\n")
+	if err := c.manipulateAgents(c.restorer.StartAgents); err != nil {
+		return errors.Trace(err)
+	}
+
+	if c.restorer.IsHA() {
+		c.ui.Notify("Primary node may have shifted.\n")
+	}
+	return nil
+}
+
+func (c *restoreCommand) manipulateAgents(operation func(bool) map[string]error) error {
+	connections := operation(!c.manualAgentControl)
+	c.ui.Notify(populate(nodesTemplate, connections))
+	for _, e := range connections {
+		if e != nil {
+			// If even one connection failed, we cannot proceed.
+			return errors.Errorf("'juju-restore' could not manipulate all necessary agents: controllers' agents cannot be managed")
+		}
 	}
 	return nil
 }

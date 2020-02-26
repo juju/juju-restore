@@ -34,7 +34,7 @@ these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): `
 
-	nodeConnectivityTemplate = `{{range $k,$v := . }} 
+	nodesTemplate = `{{range $k,$v := . }} 
     {{$k}} {{if $v}}✗ error: {{ $v }}{{else}}✓ {{end}}{{end}}
 `
 
@@ -51,10 +51,9 @@ Restore cannot be cleanly aborted from here on.
 Are you sure you want to proceed? (y/N): `
 
 	secondaryAgentsMustStop = `
-Juju agents and mongo agents on secondary controller machines must be stopped by this point.
+Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
     $ systemctl stop jujud-machine-*
-    $ systemctl stop juju-db
 `
 )
 

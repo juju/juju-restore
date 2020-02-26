@@ -36,11 +36,12 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 			return core.ReplicaSet{
 				Members: []core.ReplicaSetMember{
 					{
-						Healthy: true,
-						ID:      1,
-						Name:    "one-node",
-						State:   "PRIMARY",
-						Self:    true,
+						Healthy:       true,
+						ID:            1,
+						Name:          "one-node",
+						State:         "PRIMARY",
+						Self:          true,
+						JujuMachineID: "2",
 					},
 				},
 			}, nil
@@ -94,6 +95,7 @@ func (s *restoreSuite) TestRestoreAborted(c *gc.C) {
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -110,12 +112,17 @@ Are you sure you want to proceed? (y/N): `[1:])
 }
 
 func (s *restoreSuite) TestRestoreProceed(c *gc.C) {
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
 	ctx, err := s.runCmd(c, "y", "backup.file")
 	c.Assert(err, jc.ErrorIsNil)
 
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -128,7 +135,11 @@ All restore pre-checks are completed.
 
 Restore cannot be cleanly aborted from here on.
 
-Are you sure you want to proceed? (y/N): `[1:])
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one-node ✓ 
+`[1:])
 }
 
 func (s *restoreSuite) setupHA() {
@@ -136,17 +147,19 @@ func (s *restoreSuite) setupHA() {
 		return core.ReplicaSet{
 			Members: []core.ReplicaSetMember{
 				{
-					Healthy: true,
-					ID:      1,
-					Name:    "one:node",
-					State:   "PRIMARY",
-					Self:    true,
+					Healthy:       true,
+					ID:            1,
+					Name:          "one:node",
+					State:         "PRIMARY",
+					Self:          true,
+					JujuMachineID: "2",
 				},
 				{
-					Healthy: true,
-					ID:      2,
-					Name:    "two:node",
-					State:   "SECONDARY",
+					Healthy:       true,
+					ID:            2,
+					Name:          "two:node",
+					State:         "SECONDARY",
+					JujuMachineID: "1",
 				},
 			},
 		}, nil
@@ -166,6 +179,7 @@ func (s *restoreSuite) TestRestoreHAConnectionFail(c *gc.C) {
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -199,6 +213,7 @@ func (s *restoreSuite) TestRestoreHAConnectionOk(c *gc.C) {
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -234,6 +249,7 @@ func (s *restoreSuite) TestRestoreHAChoseManual(c *gc.C) {
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -258,12 +274,16 @@ Are you sure you want to proceed? (y/N): `[1:])
 
 func (s *restoreSuite) TestRestoreHAManualControlOption(c *gc.C) {
 	s.setupHA()
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
 	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
 	c.Assert(err, jc.ErrorIsNil)
-
 	s.database.CheckCallNames(c, "ReplicaSet", "Close")
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
 Checking database and replica set health...
 
 Replica set is healthy     ✓
@@ -272,16 +292,141 @@ Running on primary HA node ✓
 You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
 It contains a controller  at Juju version 0.0.0 with 0 models.
 
-Juju agents and mongo agents on secondary controller machines must be stopped by this point.
+Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
     $ systemctl stop jujud-machine-*
-    $ systemctl stop juju-db
 
 All restore pre-checks are completed.
 
 Restore cannot be cleanly aborted from here on.
 
-Are you sure you want to proceed? (y/N): `[1:])
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one:node ✓ 
+`[1:])
+}
+
+func (s *restoreSuite) TestRestoreAgentStopFail(c *gc.C) {
+	s.setupHA()
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		node.SetErrors(errors.New("kaboom"))
+		return node
+	}
+	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
+	c.Assert(err, gc.ErrorMatches, "'juju-restore' could not manipulate all necessary agents: controllers' agents cannot be managed")
+	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
+It contains a controller  at Juju version 0.0.0 with 0 models.
+
+Juju agents on secondary controller machines must be stopped by this point.
+To stop the agents, login into each secondary controller and run:
+    $ systemctl stop jujud-machine-*
+
+All restore pre-checks are completed.
+
+Restore cannot be cleanly aborted from here on.
+
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one:node ✗ error: kaboom
+`[1:])
+}
+
+func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
+	ctx, err := s.runCmd(c, "y", "backup.file", "--rs")
+	c.Assert(err, jc.ErrorIsNil)
+
+	s.database.CheckCallNames(c, "ReplicaSet", "ReplicaSet", "Close")
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
+It contains a controller  at Juju version 0.0.0 with 0 models.
+
+All restore pre-checks are completed.
+
+Restore cannot be cleanly aborted from here on.
+
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one-node ✓ 
+
+Starting Juju agents...
+ 
+    one-node ✓ 
+`[1:])
+}
+
+func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
+	s.setupHA()
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
+	ctx, err := s.runCmd(c, "yy", "backup.file", "--rs")
+	c.Assert(err, jc.ErrorIsNil)
+
+	s.database.CheckCallNames(c, "ReplicaSet", "ReplicaSet", "Close")
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
+It contains a controller  at Juju version 0.0.0 with 0 models.
+
+This controller is in HA and to restore into it successfully, 
+'juju-restore' needs to manage Juju and Mongo agents on  
+secondary controller nodes.
+However, on the bigger systems, the operator might want to manage 
+these agents manually.
+
+Do you want 'juju-restore' to manage these agents automatically? (y/N): 
+
+Checking connectivity to secondary controller machines...
+ 
+    two:node ✓ 
+
+All restore pre-checks are completed.
+
+Restore cannot be cleanly aborted from here on.
+
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one:node ✓  
+    two:node ✓ 
+
+Starting Juju agents...
+ 
+    one:node ✓  
+    two:node ✓ 
+Primary node may have shifted.
+`[1:])
 }
 
 func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.Context, error) {
@@ -325,5 +470,15 @@ func (f *fakeControllerNode) IP() string {
 
 func (f *fakeControllerNode) Ping() error {
 	f.Stub.MethodCall(f, "Ping")
+	return f.NextErr()
+}
+
+func (f *fakeControllerNode) StopAgent() error {
+	f.Stub.MethodCall(f, "StopAgent")
+	return f.NextErr()
+}
+
+func (f *fakeControllerNode) StartAgent() error {
+	f.Stub.MethodCall(f, "StartAgent")
 	return f.NextErr()
 }

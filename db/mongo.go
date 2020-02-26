@@ -57,6 +57,23 @@ func (db *database) ReplicaSet() (core.ReplicaSet, error) {
 	if err != nil {
 		return core.ReplicaSet{}, errors.Trace(err)
 	}
+	// Current members collection of replicaset contains additional
+	// information for the nodes, including machine IDs.
+	members, err := replicaset.CurrentMembers(db.session)
+	if err != nil {
+		return core.ReplicaSet{}, errors.Trace(err)
+	}
+	mapped := map[int]replicaset.Member{}
+	for _, v := range members {
+		mapped[v.Id] = v
+	}
+	machineID := func(member replicaset.Member) string {
+		t, k := member.Tags["juju-machine-id"]
+		if !k {
+			return ""
+		}
+		return t
+	}
 
 	result := core.ReplicaSet{
 		Name:    status.Name,
@@ -64,11 +81,12 @@ func (db *database) ReplicaSet() (core.ReplicaSet, error) {
 	}
 	for i, m := range status.Members {
 		result.Members[i] = core.ReplicaSetMember{
-			ID:      m.Id,
-			Name:    m.Address,
-			Self:    m.Self,
-			Healthy: m.Healthy,
-			State:   m.State.String(),
+			ID:            m.Id,
+			Name:          m.Address,
+			Self:          m.Self,
+			Healthy:       m.Healthy,
+			State:         m.State.String(),
+			JujuMachineID: machineID(mapped[m.Id]),
 		}
 	}
 	return result, nil

@@ -4,9 +4,13 @@
 package core
 
 import (
+	"time"
+
+	"github.com/juju/clock"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
 	"github.com/kr/pretty"
+	"gopkg.in/retry.v1"
 )
 
 var logger = loggo.GetLogger("juju-restore.core")
@@ -44,7 +48,7 @@ func (r *Restorer) CheckDatabaseState() error {
 			primary = &saved
 		}
 		validState := member.State == statePrimary || member.State == stateSecondary
-		if !validState || !member.Healthy {
+		if !validState || !member.Healthy || member.JujuMachineID == "" {
 			unhealthyMembers = append(unhealthyMembers, member)
 		}
 	}
@@ -78,4 +82,95 @@ func (r *Restorer) CheckSecondaryControllerNodes() map[string]error {
 		reachable[memberMachine.IP()] = memberMachine.Ping()
 	}
 	return reachable
+}
+
+// StopAgents stops controller agents, jujud-machine-*.
+// If stopSecondaries is true, these agents on other controller nodes will be stopped
+// as well.
+// The agents on the primary node are always stopped last.
+func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
+	// When stopping agents we want to stop primary last in an attempt to
+	// avoid re-election now - we are stopping anyway.
+	return r.manageAgents(stopSecondaries, func(n ControllerNode) error { return n.StopAgent() }, false)
+}
+
+// StartAgents starts controller agents, jujud-machine-*.
+// If stopSecondaries is true, these agents on other controller nodes will be started
+// as well.
+// The agents on the primary node are always started first.
+func (r *Restorer) StartAgents(startSecondaries bool) map[string]error {
+	// Check replicaset is healthy before restarting agents.
+	r.replicaSetStabilised()
+	// When starting agents we want to start primary first in an attempt to
+	// preserve it being a primary.
+	return r.manageAgents(startSecondaries, func(n ControllerNode) error { return n.StartAgent() }, true)
+}
+
+func (r *Restorer) replicaSetStabilised() {
+	// keep a copy of replicaset, in case all exponential attempts fail.
+	pre := r.replicaSet
+
+	checkReplicaset := func() error {
+		replicaSet, err := r.db.ReplicaSet()
+		if err != nil {
+			return errors.Annotate(err, "getting database replica set")
+		}
+		// We want to refresh replicaset as we go...
+		r.replicaSet = replicaSet
+		err = r.CheckDatabaseState()
+		if err != nil {
+			return errors.Annotate(err, "replicaset is sick")
+		}
+		return nil
+	}
+
+	attempt := retry.Start(
+		retry.LimitCount(20, retry.Exponential{
+			Initial: 5 * time.Second,
+			Factor:  1.6,
+		}),
+		clock.WallClock,
+	)
+
+	var err error
+	for attempt.Next() {
+		err = checkReplicaset()
+		if err == nil {
+			logger.Debugf("replicaset is healthy")
+			break
+		}
+		if attempt.More() {
+			logger.Debugf("replicaset is sick (retrying, attempt %v): %v", attempt.Count(), err)
+		}
+	}
+	if err != nil {
+		r.replicaSet = pre
+		logger.Errorf("Could not finish waiting for healthy replicaset")
+	}
+}
+
+func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error, primaryFirst bool) map[string]error {
+	var primary ControllerNode
+	result := map[string]error{}
+	secondaries := []ControllerNode{}
+	for _, member := range r.replicaSet.Members {
+		memberMachine := r.convertToControllerNode(member)
+		if member.Self {
+			primary = memberMachine
+			continue
+		}
+		if all {
+			secondaries = append(secondaries, memberMachine)
+		}
+	}
+	if primaryFirst {
+		result[primary.IP()] = operation(primary)
+	}
+	for _, n := range secondaries {
+		result[n.IP()] = operation(n)
+	}
+	if !primaryFirst {
+		result[primary.IP()] = operation(primary)
+	}
+	return result
 }
