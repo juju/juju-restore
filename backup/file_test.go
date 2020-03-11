@@ -39,7 +39,7 @@ func (s *backupSuite) SetUpTest(c *gc.C) {
 	})
 }
 
-func (s *backupSuite) TestOpen(c *gc.C) {
+func (s *backupSuite) TestOpenFormatVersion0(c *gc.C) {
 	path := filepath.Join("testdata", "valid-backup.tar.gz")
 	opened, err := backup.Open(path, s.dir)
 	c.Assert(err, jc.ErrorIsNil)
@@ -97,4 +97,36 @@ func (s *backupSuite) TestMetadata(c *gc.C) {
 		ContainsLogs:        false,
 		ModelCount:          2,
 	})
+}
+
+func (s *backupSuite) TestMetadataFormatVersion1(c *gc.C) {
+	path := filepath.Join("testdata", "valid-backup-ver-1.tar.gz")
+	opened, err := backup.Open(path, s.dir)
+	c.Assert(err, jc.ErrorIsNil)
+	defer opened.Close()
+
+	metadata, err := opened.Metadata()
+	c.Assert(err, jc.ErrorIsNil)
+	expectCreated, err := time.Parse(time.RFC3339, "2020-03-03T15:56:49.610854672Z")
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(metadata, gc.Equals, core.BackupMetadata{
+		FormatVersion:       1,
+		ControllerModelUUID: "1be318f6-9460-4fe1-8eb4-b1df2db23b53",
+		JujuVersion:         version.MustParse("2.8-beta1.1"),
+		Series:              "bionic",
+		BackupCreated:       expectCreated,
+		Hostname:            "juju-b23b53-2",
+		ContainsLogs:        false,
+		ModelCount:          2,
+	})
+}
+
+func (s *backupSuite) TestMetadataFormatVersion2(c *gc.C) {
+	path := filepath.Join("testdata", "valid-backup-ver-2.tar.gz")
+	opened, err := backup.Open(path, s.dir)
+	c.Assert(err, jc.ErrorIsNil)
+	defer opened.Close()
+
+	_, err = opened.Metadata()
+	c.Assert(err, gc.ErrorMatches, "reading metadata: unsupported backup format version 2")
 }

@@ -23,7 +23,7 @@ import (
 var logger = loggo.GetLogger("juju-restore.backup")
 
 const (
-	toplevelDir  = "juju-backup"
+	topLevelDir  = "juju-backup"
 	rootTarFile  = "root.tar"
 	metadataFile = "juju-backup/metadata.json"
 	logsDir      = "juju-backup/dump/logs"
@@ -55,7 +55,7 @@ func Open(path string, tempRoot string) (_ core.BackupFile, err error) {
 	}
 	// Inside the extracted directory is another root.tar file that we can
 	// extract in place.
-	extractedDir := filepath.Join(destDir, toplevelDir)
+	extractedDir := filepath.Join(destDir, topLevelDir)
 	err = extractFiles(filepath.Join(extractedDir, rootTarFile), extractedDir)
 	if err != nil {
 		return nil, errors.Annotatef(err, "extracting root.tar in %q", destDir)

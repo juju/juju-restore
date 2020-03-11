@@ -30,6 +30,9 @@ func readMetadataJSON(path string) (core.BackupMetadata, error) {
 		return core.BackupMetadata{}, errors.Annotate(err, "unmarshalling v1 metadata")
 	}
 
+	if target.FormatVersion > 1 {
+		return core.BackupMetadata{}, errors.Errorf("unsupported backup format version %d", target.FormatVersion)
+	}
 	if target.FormatVersion == 1 {
 		return flatToBackupMetadata(target), nil
 	}
