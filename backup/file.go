@@ -71,7 +71,7 @@ type expandedBackup struct {
 // Metadata returns the collected info from the backup file. Part of
 // core.BackupFile.
 func (b *expandedBackup) Metadata() (core.BackupMetadata, error) {
-	result, err := readMetadataJSON(filepath.Join(b.dir, metadataFile))
+	result, err := readMetadataJSON(b.dir)
 	if err != nil {
 		return core.BackupMetadata{}, errors.Annotate(err, "reading metadata")
 	}

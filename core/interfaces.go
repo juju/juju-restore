@@ -144,4 +144,8 @@ type BackupMetadata struct {
 
 	// ModelCount reports how many models are contained in the backup.
 	ModelCount int
+
+	// HANodes is the number of machines in the controller that was
+	// backed up.
+	HANodes int
 }

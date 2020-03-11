@@ -25,7 +25,7 @@ require (
 	gopkg.in/juju/names.v3 v3.0.0-20200131033104-139ecaca454c // indirect
 	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
 	gopkg.in/retry.v1 v1.0.3
-	gopkg.in/yaml.v2 v2.2.8 // indirect
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 replace gopkg.in/mgo.v2 => github.com/juju/mgo v0.0.0-20190418114320-e9d4866cb7fc

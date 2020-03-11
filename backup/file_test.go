@@ -96,6 +96,7 @@ func (s *backupSuite) TestMetadata(c *gc.C) {
 		Hostname:            "juju-53ab97-0",
 		ContainsLogs:        false,
 		ModelCount:          2,
+		HANodes:             3,
 	})
 }
 
@@ -118,6 +119,7 @@ func (s *backupSuite) TestMetadataFormatVersion1(c *gc.C) {
 		Hostname:            "juju-b23b53-2",
 		ContainsLogs:        false,
 		ModelCount:          2,
+		HANodes:             3,
 	})
 }
 

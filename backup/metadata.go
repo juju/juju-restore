@@ -7,16 +7,18 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/juju/errors"
 	"github.com/juju/version"
+	"gopkg.in/yaml.v2"
 
 	"github.com/juju/juju-restore/core"
 )
 
-func readMetadataJSON(path string) (core.BackupMetadata, error) {
-	source, err := os.Open(path)
+func readMetadataJSON(directory string) (core.BackupMetadata, error) {
+	source, err := os.Open(filepath.Join(directory, metadataFile))
 	if err != nil {
 		return core.BackupMetadata{}, errors.Trace(err)
 	}
@@ -44,7 +46,14 @@ func readMetadataJSON(path string) (core.BackupMetadata, error) {
 	if err != nil {
 		return core.BackupMetadata{}, errors.Annotate(err, "unmarshalling v0 metadata")
 	}
-	return flatV0ToBackupMetadata(targetV0), nil
+
+	// There's no HANodes field in version 0 metadata - get it from
+	// the agent.conf instead.
+	haNodes, err := countHANodes(directory)
+	if err != nil {
+		return core.BackupMetadata{}, errors.Annotate(err, "counting HA nodes")
+	}
+	return flatV0ToBackupMetadata(targetV0, haNodes), nil
 }
 
 // Duplicating the flat metadata formats from the juju codebase for
@@ -87,6 +96,7 @@ func flatToBackupMetadata(source flatMetadata) core.BackupMetadata {
 		Series:              source.Series,
 		BackupCreated:       source.Started,
 		Hostname:            source.Hostname,
+		HANodes:             int(source.HANodes),
 	}
 }
 
@@ -115,7 +125,7 @@ type flatMetadataV0 struct {
 	CAPrivateKey string
 }
 
-func flatV0ToBackupMetadata(source flatMetadataV0) core.BackupMetadata {
+func flatV0ToBackupMetadata(source flatMetadataV0, haNodes int) core.BackupMetadata {
 	return core.BackupMetadata{
 		FormatVersion:       0,
 		ControllerModelUUID: source.Environment,
@@ -123,5 +133,42 @@ func flatV0ToBackupMetadata(source flatMetadataV0) core.BackupMetadata {
 		Series:              source.Series,
 		BackupCreated:       source.Started,
 		Hostname:            source.Hostname,
+		HANodes:             haNodes,
 	}
+}
+
+const agentConfPattern = "var/lib/juju/agents/machine-*/agent.conf"
+
+func countHANodes(directory string) (int, error) {
+	matches, err := filepath.Glob(filepath.Join(directory, topLevelDir, agentConfPattern))
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	if len(matches) != 1 {
+		return 0, errors.Errorf("expected one machine agent.conf, found %d: %#v", len(matches), matches)
+	}
+	agentConf, err := os.Open(matches[0])
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	defer agentConf.Close()
+
+	contents, err := ioutil.ReadAll(agentConf)
+	if err != nil {
+		return 0, errors.Annotatef(err, "reading agent.conf file %q", matches[0])
+	}
+	var data map[string]interface{}
+	err = yaml.Unmarshal(contents, &data)
+	if err != nil {
+		return 0, errors.Annotatef(err, "reading config file %q", matches[0])
+	}
+	value, ok := data["apiaddresses"]
+	if !ok {
+		return 0, errors.Errorf("no apiaddresses in %q", matches[0])
+	}
+	addresses, ok := value.([]interface{})
+	if !ok {
+		return 0, errors.Errorf("apiaddresses not a list in %q", matches[0])
+	}
+	return len(addresses), nil
 }
