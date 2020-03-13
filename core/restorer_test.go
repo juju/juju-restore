@@ -414,12 +414,18 @@ func (s *restorerSuite) TestStartAgentFail(c *gc.C) {
 
 type fakeDatabase struct {
 	testing.Stub
-	replicaSetF func() (core.ReplicaSet, error)
+	replicaSetF     func() (core.ReplicaSet, error)
+	controllerInfoF func() (core.ControllerInfo, error)
 }
 
 func (db *fakeDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	db.Stub.MethodCall(db, "ReplicaSet")
 	return db.replicaSetF()
+}
+
+func (db *fakeDatabase) ControllerInfo() (core.ControllerInfo, error) {
+	db.Stub.MethodCall(db, "ControllerInfo")
+	return db.controllerInfoF()
 }
 
 func (db *fakeDatabase) Close() {

@@ -16,6 +16,10 @@ type Database interface {
 	// ReplicaSet gets the status of the replica set and all members.
 	ReplicaSet() (ReplicaSet, error)
 
+	// ControllerInfo gets information about the controller that we
+	// can compare to the backup file.
+	ControllerInfo() (ControllerInfo, error)
+
 	// Close terminates the database connection.
 	Close()
 }
@@ -29,6 +33,23 @@ type ReplicaSet struct {
 
 	// Members lists the nodes that make up the set.
 	Members []ReplicaSetMember
+}
+
+// ControllerInfo holds identifying information about a Juju controller.
+type ControllerInfo struct {
+	// ControllerModelUUID is the controller model UUID for this controller.
+	ControllerModelUUID string
+
+	// JujuVersion is the version of Juju running on this controller.
+	JujuVersion version.Number
+
+	// Series is the OS series the controller is deployed on. Ths
+	// determines what version of mongo is installed and whether we
+	// can restore a given backup.
+	Series string
+
+	// HANodes is the count of controller machines.
+	HANodes int
 }
 
 // ReplicaSetMember holds status information about a database replica

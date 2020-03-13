@@ -450,12 +450,18 @@ func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.C
 
 type testDatabase struct {
 	*testing.Stub
-	replicaSetF func() (core.ReplicaSet, error)
+	replicaSetF     func() (core.ReplicaSet, error)
+	controllerInfoF func() (core.ControllerInfo, error)
 }
 
 func (d *testDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	d.AddCall("ReplicaSet")
 	return d.replicaSetF()
+}
+
+func (d *testDatabase) ControllerInfo() (core.ControllerInfo, error) {
+	d.AddCall("ControllerInfo")
+	return d.controllerInfoF()
 }
 
 func (d *testDatabase) Close() {
