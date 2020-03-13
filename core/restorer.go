@@ -15,22 +15,32 @@ import (
 
 var logger = loggo.GetLogger("juju-restore.core")
 
+// ControllerNodeFactory gets a controller node machine from a
+// replicaset member.
+type ControllerNodeFactory func(member ReplicaSetMember) ControllerNode
+
 // NewRestorer returns a new restorer for a specific database and
 // backup.
-func NewRestorer(db Database, convert func(member ReplicaSetMember) ControllerNode) (*Restorer, error) {
+func NewRestorer(db Database, backup BackupFile, convert ControllerNodeFactory) (*Restorer, error) {
 	replicaSet, err := db.ReplicaSet()
 	if err != nil {
 		return nil, errors.Annotate(err, "getting database replica set")
 	}
-	return &Restorer{db, replicaSet, convert}, nil
+	return &Restorer{
+		db:                      db,
+		backup:                  backup,
+		replicaSet:              replicaSet,
+		convertToControllerNode: convert,
+	}, nil
 }
 
 // Restorer checks the database health and backup file state and
 // restores the backup file.
 type Restorer struct {
 	db                      Database
+	backup                  BackupFile
 	replicaSet              ReplicaSet
-	convertToControllerNode func(member ReplicaSetMember) ControllerNode
+	convertToControllerNode ControllerNodeFactory
 }
 
 // CheckDatabaseState determines whether this database is appropriate

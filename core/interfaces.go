@@ -98,3 +98,54 @@ const (
 	statePrimary   = "PRIMARY"
 	stateSecondary = "SECONDARY"
 )
+
+// BackupFile represents a specific backup file and provides methods
+// for getting information from it.
+type BackupFile interface {
+	// Metadata retrieves identifying information from the backup file
+	// and returns it.
+	Metadata() (BackupMetadata, error)
+
+	// Close indicates the backup file is not needed anymore so any
+	// temp space used can be freed.
+	Close() error
+}
+
+// BackupMetadata holds interesting information about a backup file.
+type BackupMetadata struct {
+	// FormatVersion tells us which version of the backup structure
+	// this file uses. If one wasn't specified in the file, it's
+	// version 0.
+	FormatVersion int64
+
+	// ControllerModelUUID is the model UUID of the backed up
+	// controller model.
+	ControllerModelUUID string
+
+	// JujuVersion is the Juju version of the controller from which
+	// the backup was taken.
+	JujuVersion version.Number
+
+	// Series is the OS series the backup was taken on. This will
+	// determine the version of mongo that's installed and will need
+	// to match the restore target.
+	Series string
+
+	// BackupCreated stores when this backup was created.
+	BackupCreated time.Time
+
+	// Hostname stores the name of the machine that created the
+	// backup.
+	Hostname string
+
+	// ContainsLogs will be true if this backup includes log
+	// collections.
+	ContainsLogs bool
+
+	// ModelCount reports how many models are contained in the backup.
+	ModelCount int
+
+	// HANodes is the number of machines in the controller that was
+	// backed up.
+	HANodes int
+}
