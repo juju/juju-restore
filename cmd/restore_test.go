@@ -4,11 +4,14 @@
 package cmd_test
 
 import (
+	"time"
+
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/version"
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju-restore/cmd"
@@ -36,20 +39,42 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 		Stub: &testing.Stub{},
 		replicaSetF: func() (core.ReplicaSet, error) {
 			return core.ReplicaSet{
-				Members: []core.ReplicaSetMember{
-					{
-						Healthy:       true,
-						ID:            1,
-						Name:          "one-node",
-						State:         "PRIMARY",
-						Self:          true,
-						JujuMachineID: "2",
-					},
-				},
+				Members: []core.ReplicaSetMember{{
+					Healthy:       true,
+					ID:            1,
+					Name:          "one-node",
+					State:         "PRIMARY",
+					Self:          true,
+					JujuMachineID: "2",
+				}},
+			}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				ControllerModelUUID: "how-bizarre",
+				JujuVersion:         version.MustParse("2.7.5.2"),
+				Series:              "disco",
+				HANodes:             1,
 			}, nil
 		},
 	}
-	s.backup = &fakeBackup{}
+	created, err := time.Parse(time.RFC3339, "2020-03-17T16:28:24Z")
+	c.Assert(err, jc.ErrorIsNil)
+	s.backup = &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				FormatVersion:       1,
+				ControllerModelUUID: "how-bizarre",
+				JujuVersion:         version.MustParse("2.7.5"),
+				Series:              "disco",
+				BackupCreated:       created,
+				Hostname:            "juju-123456-0",
+				ContainsLogs:        true,
+				ModelCount:          3,
+				HANodes:             1,
+			}, nil
+		},
+	}
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
 	s.openF = func(string, string) (core.BackupFile, error) { return s.backup, nil }
 	s.converter = machine.ControllerNodeForReplicaSetMember
@@ -96,7 +121,7 @@ func (s *restoreSuite) TestRestoreAborted(c *gc.C) {
 	ctx, err := s.runCmd(c, "\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -105,14 +130,37 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 All restore pre-checks are completed.
 
 Restore cannot be cleanly aborted from here on.
 
 Are you sure you want to proceed? (y/N): `[1:])
+}
+
+func (s *restoreSuite) TestPrecheckFailed(c *gc.C) {
+	s.database.controllerInfoF = func() (core.ControllerInfo, error) {
+		return core.ControllerInfo{
+			ControllerModelUUID: "how-bizarre",
+			JujuVersion:         version.MustParse("2.7.5"),
+			HANodes:             1,
+			Series:              "focal",
+		}, nil
+	}
+	ctx, err := s.runCmd(c, "\n", "backup.file")
+	c.Assert(err, gc.ErrorMatches, `precheck: controller series don't match - backup: "disco", controller: "focal"`)
+
+	assertLastCallIsClose(c, s.database.Calls())
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+`[1:])
 }
 
 func (s *restoreSuite) TestRestoreProceed(c *gc.C) {
@@ -123,7 +171,7 @@ func (s *restoreSuite) TestRestoreProceed(c *gc.C) {
 	ctx, err := s.runCmd(c, "y", "backup.file")
 	c.Assert(err, jc.ErrorIsNil)
 
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -132,8 +180,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 All restore pre-checks are completed.
 
@@ -180,7 +228,7 @@ func (s *restoreSuite) TestRestoreHAConnectionFail(c *gc.C) {
 	ctx, err := s.runCmd(c, "y\r\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, `'juju-restore' could not connect to all controller machines: controllers' agents cannot be managed`)
 
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -189,8 +237,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 This controller is in HA and to restore into it successfully, 
 'juju-restore' needs to manage Juju and Mongo agents on  
@@ -214,7 +262,7 @@ func (s *restoreSuite) TestRestoreHAConnectionOk(c *gc.C) {
 	ctx, err := s.runCmd(c, "y\r\n\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -223,8 +271,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 This controller is in HA and to restore into it successfully, 
 'juju-restore' needs to manage Juju and Mongo agents on  
@@ -250,7 +298,7 @@ func (s *restoreSuite) TestRestoreHAChoseManual(c *gc.C) {
 	ctx, err := s.runCmd(c, "\n\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -259,8 +307,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 This controller is in HA and to restore into it successfully, 
 'juju-restore' needs to manage Juju and Mongo agents on  
@@ -284,7 +332,7 @@ func (s *restoreSuite) TestRestoreHAManualControlOption(c *gc.C) {
 	}
 	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
 	c.Assert(err, jc.ErrorIsNil)
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -293,8 +341,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
@@ -320,7 +368,7 @@ func (s *restoreSuite) TestRestoreAgentStopFail(c *gc.C) {
 	}
 	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
 	c.Assert(err, gc.ErrorMatches, "'juju-restore' could not manipulate all necessary agents: controllers' agents cannot be managed")
-	s.database.CheckCallNames(c, "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -329,8 +377,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
@@ -355,7 +403,7 @@ func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
 	ctx, err := s.runCmd(c, "y", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
-	s.database.CheckCallNames(c, "ReplicaSet", "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -364,8 +412,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 All restore pre-checks are completed.
 
@@ -391,7 +439,7 @@ func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
 	ctx, err := s.runCmd(c, "yy", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
-	s.database.CheckCallNames(c, "ReplicaSet", "ReplicaSet", "Close")
+	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
@@ -400,8 +448,8 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 0001-01-01 00:00:00 +0000 UTC. 
-It contains a controller  at Juju version 0.0.0 with 0 models.
+You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
+It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
 
 This controller is in HA and to restore into it successfully, 
 'juju-restore' needs to manage Juju and Mongo agents on  
@@ -446,6 +494,13 @@ func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.C
 	}
 	ctx := cmdtesting.Context(c)
 	return ctx, command.Run(ctx)
+}
+
+func assertLastCallIsClose(c *gc.C, calls []testing.StubCall) {
+	if len(calls) == 0 {
+		c.Fatalf("not closed because there were no calls")
+	}
+	c.Assert(calls[len(calls)-1].FuncName, gc.Equals, "Close")
 }
 
 type testDatabase struct {

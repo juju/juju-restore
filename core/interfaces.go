@@ -105,14 +105,15 @@ type PrecheckResult struct {
 	// BackupDate is the date the backup was finished.
 	BackupDate time.Time
 
-	// ControllerUUID is the controller UUID from which backup was taken.
-	ControllerUUID string
+	// ControllerModelUUID is the controller model UUID from which
+	// backup was taken.
+	ControllerModelUUID string
 
 	// JujuVersion is the Juju version of the controller from which backup was taken.
 	JujuVersion version.Number
 
 	// ModelCount is the count of models that this backup contains.
-	ModelCount int64
+	ModelCount int
 }
 
 const (
