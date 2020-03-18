@@ -5,10 +5,12 @@ package core_test
 
 import (
 	"regexp"
+	"time"
 
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/version"
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju-restore/core"
@@ -412,14 +414,130 @@ func (s *restorerSuite) TestStartAgentFail(c *gc.C) {
 	})
 }
 
+func (s *restorerSuite) TestCheckRestorable(c *gc.C) {
+	created, err := time.Parse(time.RFC3339, "2020-03-17T12:24:30Z")
+	c.Assert(err, jc.ErrorIsNil)
+	r, err := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				ControllerModelUUID: "alex the astronaut",
+				JujuVersion:         version.MustParse("2.8-beta5.6"),
+				HANodes:             5,
+				Series:              "eoan",
+			}, nil
+		},
+	}, &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				ControllerModelUUID: "alex the astronaut",
+				JujuVersion:         version.MustParse("2.8-beta5.3"),
+				Series:              "eoan",
+				BackupCreated:       created,
+				ModelCount:          3,
+				HANodes:             5,
+			}, nil
+		},
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+
+	result, err := r.CheckRestorable()
+	c.Assert(err, jc.ErrorIsNil)
+
+	c.Assert(result, gc.DeepEquals, &core.PrecheckResult{
+		BackupDate:          created,
+		ControllerModelUUID: "alex the astronaut",
+		JujuVersion:         version.MustParse("2.8-beta5.3"),
+		ModelCount:          3,
+	})
+}
+
+func (s *restorerSuite) checkRestorableMismatch(c *gc.C, expectErr string, tweak func(*core.ControllerInfo)) {
+	created, err := time.Parse(time.RFC3339, "2020-03-17T12:24:30Z")
+	c.Assert(err, jc.ErrorIsNil)
+
+	controllerInfo := core.ControllerInfo{
+		ControllerModelUUID: "porridge radio",
+		JujuVersion:         version.MustParse("2.8-beta5.6"),
+		HANodes:             5,
+		Series:              "eoan",
+	}
+	tweak(&controllerInfo)
+
+	r, err := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return controllerInfo, nil
+		},
+	}, &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				ControllerModelUUID: "porridge radio",
+				JujuVersion:         version.MustParse("2.8-beta5.3"),
+				Series:              "eoan",
+				BackupCreated:       created,
+				ModelCount:          3,
+				HANodes:             5,
+			}, nil
+		},
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+
+	result, err := r.CheckRestorable()
+	c.Assert(err, gc.ErrorMatches, expectErr)
+	c.Assert(result, gc.IsNil)
+}
+
+func (s *restorerSuite) TestCheckRestorableMismatchController(c *gc.C) {
+	s.checkRestorableMismatch(c, `controller model uuids don't match - backup: "porridge radio", controller: "alex the astronaut"`,
+		func(i *core.ControllerInfo) {
+			i.ControllerModelUUID = "alex the astronaut"
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckRestorableMismatchJujuVersion(c *gc.C) {
+	s.checkRestorableMismatch(c, `juju versions don't match - backup: "2.8-beta5.3", controller: "2.7.5"`,
+		func(i *core.ControllerInfo) {
+			i.JujuVersion = version.MustParse("2.7.5")
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckRestorableMismatchHANodes(c *gc.C) {
+	s.checkRestorableMismatch(c, `controller HA node counts don't match - backup: 5, controller: 3`,
+		func(i *core.ControllerInfo) {
+			i.HANodes = 3
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckRestorableMismatchSeries(c *gc.C) {
+	s.checkRestorableMismatch(c, `controller series don't match - backup: "eoan", controller: "zesty"`,
+		func(i *core.ControllerInfo) {
+			i.Series = "zesty"
+		},
+	)
+}
+
 type fakeDatabase struct {
 	testing.Stub
-	replicaSetF func() (core.ReplicaSet, error)
+	replicaSetF     func() (core.ReplicaSet, error)
+	controllerInfoF func() (core.ControllerInfo, error)
 }
 
 func (db *fakeDatabase) ReplicaSet() (core.ReplicaSet, error) {
 	db.Stub.MethodCall(db, "ReplicaSet")
 	return db.replicaSetF()
+}
+
+func (db *fakeDatabase) ControllerInfo() (core.ControllerInfo, error) {
+	db.Stub.MethodCall(db, "ControllerInfo")
+	return db.controllerInfoF()
 }
 
 func (db *fakeDatabase) Close() {

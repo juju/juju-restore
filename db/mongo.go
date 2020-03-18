@@ -7,9 +7,12 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/juju/collections/set"
 	"github.com/juju/errors"
 	"github.com/juju/replicaset"
+	"github.com/juju/version"
 	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 
 	"github.com/juju/juju-restore/core"
 )
@@ -91,6 +94,71 @@ func (db *database) ReplicaSet() (core.ReplicaSet, error) {
 	}
 	return result, nil
 
+}
+
+const jobManageModel = 2
+const alive = 0
+
+// ControllerInfo is part of core.Database.
+func (db *database) ControllerInfo() (core.ControllerInfo, error) {
+	var result core.ControllerInfo
+
+	jujuDB := db.session.DB("juju")
+	var modelDoc struct {
+		ID string `bson:"_id"`
+	}
+	err := jujuDB.C("models").Find(bson.M{"name": "controller"}).One(&modelDoc)
+	if err != nil {
+		return core.ControllerInfo{}, errors.Annotate(err, "getting controller model")
+	}
+	result.ControllerModelUUID = modelDoc.ID
+
+	var settingsDoc struct {
+		Settings map[string]interface{} `bson:"settings"`
+	}
+	modelSettingsKey := modelDoc.ID + ":e"
+	err = jujuDB.C("settings").FindId(modelSettingsKey).One(&settingsDoc)
+	if err != nil {
+		return core.ControllerInfo{}, errors.Annotate(err, "getting controller settings")
+	}
+	versionVal, ok := settingsDoc.Settings["agent-version"]
+	if !ok {
+		return core.ControllerInfo{}, errors.Errorf("no agent-version in controller settings")
+	}
+	versionStr, ok := versionVal.(string)
+	if !ok {
+		return core.ControllerInfo{}, errors.Errorf("expected agent-version to be a string, got %#v", versionVal)
+	}
+	result.JujuVersion, err = version.Parse(versionStr)
+	if err != nil {
+		return core.ControllerInfo{}, errors.Trace(err)
+	}
+
+	var machineDoc struct {
+		Series string `bson:"series"`
+	}
+	query := bson.M{
+		"model-uuid": modelDoc.ID,
+		"jobs":       bson.M{"$in": []int{jobManageModel}},
+		"life":       alive,
+	}
+	iter := jujuDB.C("machines").Find(query).Iter()
+	allSeries := set.NewStrings()
+	for iter.Next(&machineDoc) {
+		result.HANodes++
+		allSeries.Add(machineDoc.Series)
+	}
+	if err := iter.Close(); err != nil {
+		return core.ControllerInfo{}, errors.Annotate(err, "getting controller series")
+	}
+
+	allSeriesNames := allSeries.SortedValues()
+	if len(allSeriesNames) != 1 {
+		return core.ControllerInfo{}, errors.Errorf("expected one series, got %#v", allSeriesNames)
+	}
+
+	result.Series = allSeriesNames[0]
+	return result, nil
 }
 
 // Close is part of core.Database.

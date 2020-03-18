@@ -9,6 +9,7 @@ import (
 	"github.com/juju/clock"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/version"
 	"github.com/kr/pretty"
 	"gopkg.in/retry.v1"
 )
@@ -183,4 +184,60 @@ func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error
 		result[primary.IP()] = operation(primary)
 	}
 	return result
+}
+
+// CheckRestorable checks whether the backup file can be restored into
+// the target database.
+func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
+	backup, err := r.backup.Metadata()
+	if err != nil {
+		return nil, errors.Annotate(err, "getting backup metadata")
+	}
+	controller, err := r.db.ControllerInfo()
+	if err != nil {
+		return nil, errors.Annotate(err, "getting controller info")
+	}
+
+	// Disregard differences in build numbers - we don't want to
+	// prevent restores when fixing code bugs.
+	if !versionsMatchExcludingBuild(backup.JujuVersion, controller.JujuVersion) {
+		return nil, errors.Errorf("juju versions don't match - backup: %q, controller: %q",
+			backup.JujuVersion,
+			controller.JujuVersion,
+		)
+	}
+
+	if backup.ControllerModelUUID != controller.ControllerModelUUID {
+		return nil, errors.Errorf("controller model uuids don't match - backup: %q, controller: %q",
+			backup.ControllerModelUUID,
+			controller.ControllerModelUUID,
+		)
+	}
+
+	if backup.HANodes != controller.HANodes {
+		return nil, errors.Errorf("controller HA node counts don't match - backup: %d, controller: %d",
+			backup.HANodes,
+			controller.HANodes,
+		)
+	}
+
+	if backup.Series != controller.Series {
+		return nil, errors.Errorf("controller series don't match - backup: %q, controller: %q",
+			backup.Series,
+			controller.Series,
+		)
+	}
+
+	return &PrecheckResult{
+		BackupDate:          backup.BackupCreated,
+		ControllerModelUUID: backup.ControllerModelUUID,
+		JujuVersion:         backup.JujuVersion,
+		ModelCount:          backup.ModelCount,
+	}, nil
+}
+
+func versionsMatchExcludingBuild(a, b version.Number) bool {
+	a.Build = 0
+	b.Build = 0
+	return a == b
 }

@@ -40,7 +40,7 @@ Do you want 'juju-restore' to manage these agents automatically? (y/N): `
 
 	backupFileTemplate = `
 You are about to restore a controller from a backup file taken on {{.BackupDate}}. 
-It contains a controller {{.ControllerUUID}} at Juju version {{.JujuVersion}} with {{.ModelCount}} models.
+It contains a controller {{.ControllerModelUUID}} at Juju version {{.JujuVersion}} with {{.ModelCount}} models.
 `
 
 	preChecksCompleted = `

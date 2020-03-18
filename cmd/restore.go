@@ -165,8 +165,12 @@ func (c *restoreCommand) runPreChecks() error {
 	}
 	c.ui.Notify(dbHealthComplete)
 
-	// TODO Backup file checks go here?
-	c.ui.Notify(populate(backupFileTemplate, &core.PrecheckResult{}))
+	precheckResult, err := c.restorer.CheckRestorable()
+	if err != nil {
+		return errors.Annotate(err, "precheck")
+	}
+
+	c.ui.Notify(populate(backupFileTemplate, precheckResult))
 
 	if c.restorer.IsHA() {
 		if !c.manualAgentControl {
