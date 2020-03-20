@@ -132,3 +132,18 @@ func (s *backupSuite) TestMetadataFormatVersion2(c *gc.C) {
 	_, err = opened.Metadata()
 	c.Assert(err, gc.ErrorMatches, "reading metadata: unsupported backup format version 2")
 }
+
+func (s *backupSuite) TestDumpDirectory(c *gc.C) {
+	path := filepath.Join("testdata", "valid-backup-ver-1.tar.gz")
+	opened, err := backup.Open(path, s.dir)
+	c.Assert(err, jc.ErrorIsNil)
+	defer opened.Close()
+
+	// Get the name of the tempdir the zip was opened in.
+	items, err := ioutil.ReadDir(s.dir)
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(items, gc.HasLen, 1)
+	dirName := items[0].Name()
+
+	c.Assert(opened.DumpDirectory(), gc.Equals, filepath.Join(s.dir, dirName, "juju-backup/dump"))
+}

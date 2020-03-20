@@ -128,6 +128,10 @@ type BackupFile interface {
 	// and returns it.
 	Metadata() (BackupMetadata, error)
 
+	// DumpDirectory returns the path of the database dump to be
+	// restored.
+	DumpDirectory() string
+
 	// Close indicates the backup file is not needed anymore so any
 	// temp space used can be freed.
 	Close() error

@@ -551,11 +551,17 @@ func (f *fakeControllerNode) StartAgent() error {
 type fakeBackup struct {
 	testing.Stub
 	metadataF func() (core.BackupMetadata, error)
+	dumpDirF  func() string
 }
 
 func (b *fakeBackup) Metadata() (core.BackupMetadata, error) {
 	b.Stub.MethodCall(b, "Metadata")
 	return b.metadataF()
+}
+
+func (b *fakeBackup) DumpDirectory() string {
+	b.Stub.MethodCall(b, "DumpDirectory")
+	return b.dumpDirF()
 }
 
 func (b *fakeBackup) Close() error {
