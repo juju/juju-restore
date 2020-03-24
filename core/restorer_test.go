@@ -540,6 +540,11 @@ func (db *fakeDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	return db.controllerInfoF()
 }
 
+func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string) error {
+	db.Stub.MethodCall(db, "RestoreFromDump", dumpDir, logFile)
+	return db.Stub.NextErr()
+}
+
 func (db *fakeDatabase) Close() {
 	db.Stub.MethodCall(db, "Close")
 }

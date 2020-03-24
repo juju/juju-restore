@@ -74,6 +74,9 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 				HANodes:             1,
 			}, nil
 		},
+		dumpDirF: func() string {
+			return "dump-directory"
+		},
 	}
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
 	s.openF = func(string, string) (core.BackupFile, error) { return s.backup, nil }
@@ -189,6 +192,14 @@ Restore cannot be cleanly aborted from here on.
 
 Are you sure you want to proceed? (y/N): 
 Stopping Juju agents...
+ 
+    one-node ✓ 
+
+Running restore...
+Detailed mongorestore output in restore.log.
+
+Database restore complete.
+Starting Juju agents...
  
     one-node ✓ 
 `[1:])
@@ -356,6 +367,15 @@ Are you sure you want to proceed? (y/N):
 Stopping Juju agents...
  
     one:node ✓ 
+
+Running restore...
+Detailed mongorestore output in restore.log.
+
+Database restore complete.
+Starting Juju agents...
+ 
+    one:node ✓ 
+Primary node may have shifted.
 `[1:])
 }
 
@@ -407,22 +427,6 @@ func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
-Checking database and replica set health...
-
-Replica set is healthy     ✓
-Running on primary HA node ✓
-
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
-
-All restore pre-checks are completed.
-
-Restore cannot be cleanly aborted from here on.
-
-Are you sure you want to proceed? (y/N): 
-Stopping Juju agents...
- 
-    one-node ✓ 
 
 Starting Juju agents...
  
@@ -443,35 +447,6 @@ func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
-Checking database and replica set health...
-
-Replica set is healthy     ✓
-Running on primary HA node ✓
-
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
-
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
-
-Do you want 'juju-restore' to manage these agents automatically? (y/N): 
-
-Checking connectivity to secondary controller machines...
- 
-    two:node ✓ 
-
-All restore pre-checks are completed.
-
-Restore cannot be cleanly aborted from here on.
-
-Are you sure you want to proceed? (y/N): 
-Stopping Juju agents...
- 
-    one:node ✓  
-    two:node ✓ 
 
 Starting Juju agents...
  
@@ -517,6 +492,11 @@ func (d *testDatabase) ReplicaSet() (core.ReplicaSet, error) {
 func (d *testDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	d.AddCall("ControllerInfo")
 	return d.controllerInfoF()
+}
+
+func (d *testDatabase) RestoreFromDump(dumpDir, logFile string) error {
+	d.Stub.MethodCall(d, "RestoreFromDump", dumpDir, logFile)
+	return d.Stub.NextErr()
 }
 
 func (d *testDatabase) Close() {

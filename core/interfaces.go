@@ -20,6 +20,11 @@ type Database interface {
 	// can compare to the backup file.
 	ControllerInfo() (ControllerInfo, error)
 
+	// RestoreFromDump restores the database dump in the directory
+	// passed in to the database and writes progress logging to the
+	// specified path.
+	RestoreFromDump(dumpDir string, logFile string) error
+
 	// Close terminates the database connection.
 	Close()
 }

@@ -4,6 +4,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/gnuflag"
@@ -49,6 +51,7 @@ type restoreCommand struct {
 	loggingConfig string
 	backupFile    string
 	tempRoot      string
+	restoreLog    string
 
 	connect    func(info db.DialInfo) (core.Database, error)
 	openBackup func(path, tempRoot string) (core.BackupFile, error)
@@ -94,6 +97,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator manages secondary controller nodes in HA, e.g stops/starts Juju and Mongo agents")
 	f.BoolVar(&c.restart, "rs", false, "REMOVE ME")
 	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
+	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "Location to write mongorestore logging output")
 }
 
 // Init is part of cmd.Command.
@@ -142,6 +146,10 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 		return errors.Trace(err)
 	}
 	c.restorer = restorer
+
+	if c.restart {
+		return errors.Trace(c.runPostChecks())
+	}
 
 	// Pre-checks
 	if err := c.runPreChecks(); err != nil {
@@ -210,13 +218,17 @@ func (c *restoreCommand) restore() error {
 	if err := c.manipulateAgents(c.restorer.StopAgents); err != nil {
 		return errors.Trace(err)
 	}
+	c.ui.Notify("\nRunning restore...\n")
+	c.ui.Notify(fmt.Sprintf("Detailed mongorestore output in %s.\n", c.restoreLog))
+	if err := c.restorer.Restore(c.restoreLog); err != nil {
+		return errors.Trace(err)
+	}
+
+	c.ui.Notify("\nDatabase restore complete.")
 	return nil
 }
 
 func (c *restoreCommand) runPostChecks() error {
-	if !c.restart {
-		return nil
-	}
 	c.ui.Notify("\nStarting Juju agents...\n")
 	if err := c.manipulateAgents(c.restorer.StartAgents); err != nil {
 		return errors.Trace(err)
