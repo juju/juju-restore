@@ -170,8 +170,8 @@ func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 
 const restoreBinary = "mongorestore"
 
-func (db *database) buildRestoreArgs(dumpPath string) []string {
-	return []string{
+func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool) []string {
+	args := []string{
 		"-vvvvv",
 		"--drop",
 		"--writeConcern=majority",
@@ -185,12 +185,19 @@ func (db *database) buildRestoreArgs(dumpPath string) []string {
 		"--stopOnError",
 		"--maintainInsertionOrder",
 		"--nsExclude=logs.*",
-		dumpPath,
 	}
+	if !includeStatusHistory {
+		args = append(args, "--nsExclude=juju.statuseshistory")
+	}
+	return append(args, dumpPath)
 }
 
-func (db *database) RestoreFromDump(dumpDir, logFile string) error {
-	command := exec.Command(restoreBinary, db.buildRestoreArgs(dumpDir)...)
+// RestoreFromDump uses mongorestore to load the dump from a backup.
+func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+	command := exec.Command(
+		restoreBinary,
+		db.buildRestoreArgs(dumpDir, includeStatusHistory)...,
+	)
 	logger.Debugf("running restore command: %s %s", command.Path, strings.Join(command.Args, " "))
 	dest, err := os.Create(logFile)
 	if err != nil {

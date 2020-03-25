@@ -47,11 +47,12 @@ type restoreCommand struct {
 	username string
 	password string
 
-	verbose       bool
-	loggingConfig string
-	backupFile    string
-	tempRoot      string
-	restoreLog    string
+	verbose              bool
+	loggingConfig        string
+	backupFile           string
+	tempRoot             string
+	restoreLog           string
+	includeStatusHistory bool
 
 	connect    func(info db.DialInfo) (core.Database, error)
 	openBackup func(path, tempRoot string) (core.BackupFile, error)
@@ -97,7 +98,8 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator manages secondary controller nodes in HA, e.g stops/starts Juju and Mongo agents")
 	f.BoolVar(&c.restart, "rs", false, "REMOVE ME")
 	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
-	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "Location to write mongorestore logging output")
+	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "location to write mongorestore logging output")
+	f.BoolVar(&c.includeStatusHistory, "include-status-history", false, "restore status history for machines and units (can be large)")
 }
 
 // Init is part of cmd.Command.
@@ -220,7 +222,7 @@ func (c *restoreCommand) restore() error {
 	}
 	c.ui.Notify("\nRunning restore...\n")
 	c.ui.Notify(fmt.Sprintf("Detailed mongorestore output in %s.\n", c.restoreLog))
-	if err := c.restorer.Restore(c.restoreLog); err != nil {
+	if err := c.restorer.Restore(c.restoreLog, c.includeStatusHistory); err != nil {
 		return errors.Trace(err)
 	}
 

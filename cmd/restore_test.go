@@ -494,8 +494,8 @@ func (d *testDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	return d.controllerInfoF()
 }
 
-func (d *testDatabase) RestoreFromDump(dumpDir, logFile string) error {
-	d.Stub.MethodCall(d, "RestoreFromDump", dumpDir, logFile)
+func (d *testDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+	d.Stub.MethodCall(d, "RestoreFromDump", dumpDir, logFile, includeStatusHistory)
 	return d.Stub.NextErr()
 }
 

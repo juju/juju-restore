@@ -524,6 +524,41 @@ func (s *restorerSuite) TestCheckRestorableMismatchSeries(c *gc.C) {
 	)
 }
 
+func (s *restorerSuite) TestRestore(c *gc.C) {
+	db := fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{
+					{
+						Healthy:       true,
+						ID:            2,
+						Name:          "djula",
+						State:         "PRIMARY",
+						Self:          true,
+						JujuMachineID: "2",
+					},
+				},
+			}, nil
+		},
+	}
+	r, err := core.NewRestorer(
+		&db,
+		&fakeBackup{
+			dumpDirF: func() string {
+				return "the dump dir!"
+			},
+		},
+		s.converter,
+	)
+	c.Assert(err, jc.ErrorIsNil)
+	db.SetErrors(errors.Errorf("bad!"))
+	err = r.Restore("log path", true)
+	c.Assert(err, gc.ErrorMatches, "bad!")
+
+	c.Assert(db.Calls(), gc.HasLen, 2)
+	db.CheckCall(c, 1, "RestoreFromDump", "the dump dir!", "log path", true)
+}
+
 type fakeDatabase struct {
 	testing.Stub
 	replicaSetF     func() (core.ReplicaSet, error)
@@ -540,8 +575,8 @@ func (db *fakeDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	return db.controllerInfoF()
 }
 
-func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string) error {
-	db.Stub.MethodCall(db, "RestoreFromDump", dumpDir, logFile)
+func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+	db.Stub.MethodCall(db, "RestoreFromDump", dumpDir, logFile, includeStatusHistory)
 	return db.Stub.NextErr()
 }
 
