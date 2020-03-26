@@ -26,6 +26,7 @@ const (
 	topLevelDir  = "juju-backup"
 	rootTarFile  = "root.tar"
 	metadataFile = "juju-backup/metadata.json"
+	dumpDir      = "juju-backup/dump"
 	logsDir      = "juju-backup/dump/logs"
 	modelsFile   = "juju-backup/dump/juju/models.bson"
 )
@@ -124,6 +125,11 @@ func (b *expandedBackup) countModels() (int, error) {
 		}
 		count++
 	}
+}
+
+// DumpDirectory returns the path of the contained database dump.
+func (b *expandedBackup) DumpDirectory() string {
+	return filepath.Join(b.dir, dumpDir)
 }
 
 // Close is part of core.BackupFile. It removes the temp directory the

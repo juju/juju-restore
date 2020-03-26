@@ -236,6 +236,13 @@ func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
 	}, nil
 }
 
+// Restore replaces the database's contents with the data from the
+// backup's database dump.
+func (r *Restorer) Restore(logPath string, includeStatusHistory bool) error {
+	err := r.db.RestoreFromDump(r.backup.DumpDirectory(), logPath, includeStatusHistory)
+	return errors.Trace(err)
+}
+
 func versionsMatchExcludingBuild(a, b version.Number) bool {
 	a.Build = 0
 	b.Build = 0

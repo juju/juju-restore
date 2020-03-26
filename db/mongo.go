@@ -6,9 +6,13 @@ package db
 import (
 	"crypto/tls"
 	"net"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
 	"github.com/juju/replicaset"
 	"github.com/juju/version"
 	"gopkg.in/mgo.v2"
@@ -16,6 +20,8 @@ import (
 
 	"github.com/juju/juju-restore/core"
 )
+
+var logger = loggo.GetLogger("juju-restore.db")
 
 // DialInfo holds information needed to connect to the database.
 type DialInfo struct {
@@ -45,12 +51,13 @@ func Dial(args DialInfo) (core.Database, error) {
 	// We need to set preference to nearest since we're connecting
 	// directly, not to all the nodes in the replicaset.
 	session.SetMode(readPreferenceNearest, false)
-	return &database{session: session}, nil
+	return &database{session: session, info: args}, nil
 }
 
 const readPreferenceNearest = 6
 
 type database struct {
+	info    DialInfo
 	session *mgo.Session
 }
 
@@ -159,6 +166,47 @@ func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 
 	result.Series = allSeriesNames[0]
 	return result, nil
+}
+
+const restoreBinary = "mongorestore"
+
+func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool) []string {
+	args := []string{
+		"-vvvvv",
+		"--drop",
+		"--writeConcern=majority",
+		"--host", db.info.Hostname,
+		"--port", db.info.Port,
+		"--authenticationDatabase=admin",
+		"--username", db.info.Username,
+		"--password", db.info.Password,
+		"--ssl",
+		"--sslAllowInvalidCertificates",
+		"--stopOnError",
+		"--maintainInsertionOrder",
+		"--nsExclude=logs.*",
+	}
+	if !includeStatusHistory {
+		args = append(args, "--nsExclude=juju.statuseshistory")
+	}
+	return append(args, dumpPath)
+}
+
+// RestoreFromDump uses mongorestore to load the dump from a backup.
+func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+	command := exec.Command(
+		restoreBinary,
+		db.buildRestoreArgs(dumpDir, includeStatusHistory)...,
+	)
+	logger.Debugf("running restore command: %s %s", command.Path, strings.Join(command.Args, " "))
+	dest, err := os.Create(logFile)
+	if err != nil {
+		return errors.Annotatef(err, "opening logfile %q", logFile)
+	}
+	defer dest.Close()
+	command.Stdout = dest
+	command.Stderr = dest
+	return errors.Annotatef(command.Run(), "running %s", restoreBinary)
 }
 
 // Close is part of core.Database.
