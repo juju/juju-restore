@@ -6,7 +6,6 @@ package backup
 
 import (
 	"compress/gzip"
-	"encoding/binary"
 	"io"
 	"io/ioutil"
 	"os"
@@ -29,6 +28,7 @@ const (
 	dumpDir      = "juju-backup/dump"
 	logsDir      = "juju-backup/dump/logs"
 	modelsFile   = "juju-backup/dump/juju/models.bson"
+	machinesFile = "juju-backup/dump/juju/machines.bson"
 )
 
 // Open unpacks a backup file in a temp location and returns a
@@ -105,26 +105,15 @@ func (b *expandedBackup) countModels() (int, error) {
 	}
 	defer source.Close()
 
-	var (
-		count int
-		size  uint32
-	)
-	for {
-		// BSON docs always start with a 32-bit little-endian size, so
-		// skip forward counting the docs.
-		err := binary.Read(source, binary.LittleEndian, &size)
-		if err == io.EOF {
-			return count, nil
-		}
-		if err != nil {
-			return 0, errors.Trace(err)
-		}
-		_, err = source.Seek(int64(size), io.SeekCurrent)
-		if err != nil {
-			return 0, errors.Trace(err)
-		}
+	var count int
+	err = eachBsonDoc(source, func(_ []byte) error {
 		count++
+		return nil
+	})
+	if err != nil {
+		return 0, errors.Trace(err)
 	}
+	return count, nil
 }
 
 // DumpDirectory returns the path of the contained database dump.
