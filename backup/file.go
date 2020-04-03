@@ -22,13 +22,14 @@ import (
 var logger = loggo.GetLogger("juju-restore.backup")
 
 const (
-	topLevelDir  = "juju-backup"
-	rootTarFile  = "root.tar"
-	metadataFile = "juju-backup/metadata.json"
-	dumpDir      = "juju-backup/dump"
-	logsDir      = "juju-backup/dump/logs"
-	modelsFile   = "juju-backup/dump/juju/models.bson"
-	machinesFile = "juju-backup/dump/juju/machines.bson"
+	topLevelDir         = "juju-backup"
+	rootTarFile         = "root.tar"
+	metadataFile        = "juju-backup/metadata.json"
+	dumpDir             = "juju-backup/dump"
+	logsDir             = "juju-backup/dump/logs"
+	modelsFile          = "juju-backup/dump/juju/models.bson"
+	machinesFile        = "juju-backup/dump/juju/machines.bson"
+	controllerNodesFile = "juju-backup/dump/juju/controllerNodes.bson"
 )
 
 // Open unpacks a backup file in a temp location and returns a
@@ -99,21 +100,7 @@ func (b *expandedBackup) containsLogs() (bool, error) {
 }
 
 func (b *expandedBackup) countModels() (int, error) {
-	source, err := os.Open(filepath.Join(b.dir, modelsFile))
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	defer source.Close()
-
-	var count int
-	err = eachBsonDoc(source, func(_ []byte) error {
-		count++
-		return nil
-	})
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	return count, nil
+	return countBsonDocs(filepath.Join(b.dir, modelsFile))
 }
 
 // DumpDirectory returns the path of the contained database dump.

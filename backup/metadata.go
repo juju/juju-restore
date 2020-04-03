@@ -173,9 +173,37 @@ func eachBsonDoc(source io.Reader, callback func([]byte) error) error {
 	}
 }
 
+func countBsonDocs(path string) (int, error) {
+	source, err := os.Open(path)
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	defer source.Close()
+
+	var count int
+	err = eachBsonDoc(source, func(_ []byte) error {
+		count++
+		return nil
+	})
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	return count, nil
+}
+
 const jobManageModel = 2
 
 func countHANodes(directory, modelUUID string) (int, error) {
+	// If we have a controllerNodes collection dump, use that.
+	count, err := countBsonDocs(filepath.Join(directory, controllerNodesFile))
+	if err == nil {
+		return count, nil
+	} else if !os.IsNotExist(errors.Cause(err)) {
+		return 0, errors.Trace(err)
+	}
+
+	// Fall back to counting machines in the right model with the
+	// right job.
 	source, err := os.Open(filepath.Join(directory, machinesFile))
 	if err != nil {
 		return 0, errors.Trace(err)
