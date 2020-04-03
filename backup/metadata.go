@@ -4,7 +4,10 @@
 package backup
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -12,7 +15,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/version"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/mgo.v2/bson"
 
 	"github.com/juju/juju-restore/core"
 )
@@ -48,8 +51,8 @@ func readMetadataJSON(directory string) (core.BackupMetadata, error) {
 	}
 
 	// There's no HANodes field in version 0 metadata - get it from
-	// the agent.conf instead.
-	haNodes, err := countHANodes(directory)
+	// the machines dump file instead.
+	haNodes, err := countHANodes(directory, targetV0.Environment)
 	if err != nil {
 		return core.BackupMetadata{}, errors.Annotate(err, "counting HA nodes")
 	}
@@ -137,38 +140,103 @@ func flatV0ToBackupMetadata(source flatMetadataV0, haNodes int) core.BackupMetad
 	}
 }
 
-const agentConfPattern = "var/lib/juju/agents/machine-*/agent.conf"
+func eachBsonDoc(source io.Reader, callback func([]byte) error) error {
+	var size uint32
+	var buf bytes.Buffer
+	for {
+		// Each bson document starts with a 32-bit little-endian size.
+		err := binary.Read(source, binary.LittleEndian, &size)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return errors.Trace(err)
+		}
+		buf.Grow(int(size))
+		err = binary.Write(&buf, binary.LittleEndian, size)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		_, err = io.CopyN(&buf, source, int64(size-4))
+		if err != nil {
+			return errors.Trace(err)
+		}
 
-func countHANodes(directory string) (int, error) {
-	matches, err := filepath.Glob(filepath.Join(directory, topLevelDir, agentConfPattern))
+		// Pass the bytes rather than unmarshalling so the callback
+		// can decide how (or whether) to unmarshal it.
+		err = callback(buf.Bytes())
+		if err != nil {
+			return errors.Trace(err)
+		}
+
+		buf.Reset()
+	}
+}
+
+func countBsonDocs(path string) (int, error) {
+	source, err := os.Open(path)
 	if err != nil {
 		return 0, errors.Trace(err)
 	}
-	if len(matches) != 1 {
-		return 0, errors.Errorf("expected one machine agent.conf, found %d: %#v", len(matches), matches)
-	}
-	agentConf, err := os.Open(matches[0])
+	defer source.Close()
+
+	var count int
+	err = eachBsonDoc(source, func(_ []byte) error {
+		count++
+		return nil
+	})
 	if err != nil {
 		return 0, errors.Trace(err)
 	}
-	defer agentConf.Close()
+	return count, nil
+}
 
-	contents, err := ioutil.ReadAll(agentConf)
+const jobManageModel = 2
+
+func countHANodes(directory, modelUUID string) (int, error) {
+	// If we have a controllerNodes collection dump, use that.
+	count, err := countBsonDocs(filepath.Join(directory, controllerNodesFile))
+	if err == nil {
+		return count, nil
+	} else if !os.IsNotExist(errors.Cause(err)) {
+		return 0, errors.Trace(err)
+	}
+
+	// Fall back to counting machines in the right model with the
+	// right job.
+	source, err := os.Open(filepath.Join(directory, machinesFile))
 	if err != nil {
-		return 0, errors.Annotatef(err, "reading agent.conf file %q", matches[0])
+		return 0, errors.Trace(err)
 	}
-	var data map[string]interface{}
-	err = yaml.Unmarshal(contents, &data)
+	defer source.Close()
+
+	var haNodes, docCount int
+	err = eachBsonDoc(source, func(data []byte) error {
+		docCount++
+		var doc struct {
+			ModelUUID string `bson:"model-uuid"`
+			Jobs      []int  `bson:"jobs"`
+		}
+
+		err := bson.Unmarshal(data, &doc)
+		if err != nil {
+			return errors.Annotatef(err, "reading machine doc %d", docCount)
+		}
+
+		if doc.ModelUUID != modelUUID {
+			return nil
+		}
+		for _, job := range doc.Jobs {
+			if job == jobManageModel {
+				haNodes++
+				break
+			}
+		}
+		return nil
+	})
+
 	if err != nil {
-		return 0, errors.Annotatef(err, "reading config file %q", matches[0])
+		return 0, errors.Trace(err)
 	}
-	value, ok := data["apiaddresses"]
-	if !ok {
-		return 0, errors.Errorf("no apiaddresses in %q", matches[0])
-	}
-	addresses, ok := value.([]interface{})
-	if !ok {
-		return 0, errors.Errorf("apiaddresses not a list in %q", matches[0])
-	}
-	return len(addresses), nil
+	return haNodes, nil
 }

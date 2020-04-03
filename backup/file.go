@@ -6,7 +6,6 @@ package backup
 
 import (
 	"compress/gzip"
-	"encoding/binary"
 	"io"
 	"io/ioutil"
 	"os"
@@ -23,12 +22,14 @@ import (
 var logger = loggo.GetLogger("juju-restore.backup")
 
 const (
-	topLevelDir  = "juju-backup"
-	rootTarFile  = "root.tar"
-	metadataFile = "juju-backup/metadata.json"
-	dumpDir      = "juju-backup/dump"
-	logsDir      = "juju-backup/dump/logs"
-	modelsFile   = "juju-backup/dump/juju/models.bson"
+	topLevelDir         = "juju-backup"
+	rootTarFile         = "root.tar"
+	metadataFile        = "juju-backup/metadata.json"
+	dumpDir             = "juju-backup/dump"
+	logsDir             = "juju-backup/dump/logs"
+	modelsFile          = "juju-backup/dump/juju/models.bson"
+	machinesFile        = "juju-backup/dump/juju/machines.bson"
+	controllerNodesFile = "juju-backup/dump/juju/controllerNodes.bson"
 )
 
 // Open unpacks a backup file in a temp location and returns a
@@ -99,32 +100,7 @@ func (b *expandedBackup) containsLogs() (bool, error) {
 }
 
 func (b *expandedBackup) countModels() (int, error) {
-	source, err := os.Open(filepath.Join(b.dir, modelsFile))
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	defer source.Close()
-
-	var (
-		count int
-		size  uint32
-	)
-	for {
-		// BSON docs always start with a 32-bit little-endian size, so
-		// skip forward counting the docs.
-		err := binary.Read(source, binary.LittleEndian, &size)
-		if err == io.EOF {
-			return count, nil
-		}
-		if err != nil {
-			return 0, errors.Trace(err)
-		}
-		_, err = source.Seek(int64(size), io.SeekCurrent)
-		if err != nil {
-			return 0, errors.Trace(err)
-		}
-		count++
-	}
+	return countBsonDocs(filepath.Join(b.dir, modelsFile))
 }
 
 // DumpDirectory returns the path of the contained database dump.
