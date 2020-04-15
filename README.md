@@ -8,11 +8,12 @@ PRIMARY or SECONDARY state.
 The expected usage is to copy the juju-restore binary and the backup
 file to the primary controller machine and then run it:
 
-    ./juju-restore --username machine-n --password mongo-password /path/to/backup/file
+    ./juju-restore /path/to/backup/file
 
-Username and password should be the `tag` and `statepassword` fields
-from the machine agent's config file:
-`/var/lib/juju/agents/machine-<n>/agent.conf`
+Username and password will be collected automatically from the machine
+agent's config file: `/var/lib/juju/agents/machine-<n>/agent.conf`
+They can be specified manually with the `--username`/`--password`
+options if needed.
 
 The other connection options (hostname, port and ssl) have defaults
 that should be correct unless there is some unusual configuration for

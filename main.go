@@ -38,6 +38,7 @@ func Run(args []string) int {
 		backup.Open,
 		machine.ControllerNodeForReplicaSetMember,
 		cmd.ReadOneChar,
+		cmd.ReadCredsFromAgentConf,
 	)
 	return corecmd.Main(restorer, ctx, args[1:])
 }

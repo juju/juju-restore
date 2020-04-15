@@ -4,6 +4,8 @@
 package cmd_test
 
 import (
+	"io/ioutil"
+	"path/filepath"
 	"time"
 
 	corecmd "github.com/juju/cmd"
@@ -29,6 +31,7 @@ type restoreSuite struct {
 	openF     func(string, string) (core.BackupFile, error)
 	converter func(member core.ReplicaSetMember) core.ControllerNode
 	readFunc  func(*corecmd.Context) (string, error)
+	loadCreds func() (string, string, error)
 }
 
 var _ = gc.Suite(&restoreSuite{})
@@ -82,6 +85,10 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 	s.openF = func(string, string) (core.BackupFile, error) { return s.backup, nil }
 	s.converter = machine.ControllerNodeForReplicaSetMember
 	s.readFunc = func(*corecmd.Context) (string, error) { return "", nil }
+	s.loadCreds = func() (string, string, error) {
+		return "", "", errors.Errorf("loading those creds")
+	}
+
 }
 
 type restoreCommandTestData struct {
@@ -108,7 +115,7 @@ var commandArgsTests = []restoreCommandTestData{
 }
 
 func (s *restoreSuite) TestArgParsing(c *gc.C) {
-	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds)
 	for i, test := range commandArgsTests {
 		c.Logf("%d: %s", i, test.title)
 		err := cmdtesting.InitCommand(command, test.args)
@@ -456,13 +463,79 @@ Primary node may have shifted.
 `[1:])
 }
 
+func (s *restoreSuite) TestLoadsCredsIfNoUsername(c *gc.C) {
+	_, err := s.runCmdNoUser(c, "", "backup.file")
+	c.Assert(err, gc.ErrorMatches, "loading credentials: loading those creds")
+}
+
+func (s *restoreSuite) TestReadCredsFromPattern(c *gc.C) {
+	dir := c.MkDir()
+	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(agentConfContents), 0777)
+	c.Assert(err, jc.ErrorIsNil)
+
+	username, password, err := cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(username, gc.Equals, "porridge-radio")
+	c.Assert(password, gc.Equals, "lilac")
+}
+
+func (s *restoreSuite) TestReadCredsMissingUsername(c *gc.C) {
+	dir := c.MkDir()
+	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingTagConf), 0777)
+	c.Assert(err, jc.ErrorIsNil)
+
+	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	c.Assert(err, gc.ErrorMatches, `no username found in ".*/agent\.conf" - tag field is missing or blank`)
+}
+
+func (s *restoreSuite) TestReadCredsMissingPassword(c *gc.C) {
+	dir := c.MkDir()
+	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingPasswordConf), 0777)
+	c.Assert(err, jc.ErrorIsNil)
+
+	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	c.Assert(err, gc.ErrorMatches, `no password found in ".*/agent\.conf" - statepassword field is missing or blank`)
+}
+
+var (
+	agentConfContents = `
+# format: 2.0
+some-field:
+  something: else
+tag: porridge-radio
+other: value
+statepassword: lilac
+`[1:]
+
+	missingTagConf = `
+# format: 2.0
+some-field:
+  something: else
+other: value
+statepassword: lilac
+`[1:]
+
+	missingPasswordConf = `
+# format: 2.0
+some-field:
+  something: else
+tag: porridge-radio
+other: value
+`[1:]
+)
+
 func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.Context, error) {
+	args = append([]string{"--username=admin"}, args...)
+	return s.runCmdNoUser(c, input, args...)
+}
+
+func (s *restoreSuite) runCmdNoUser(c *gc.C, input string, args ...string) (*corecmd.Context, error) {
 	count := -1
 	s.readFunc = func(*corecmd.Context) (string, error) {
 		count++
 		return string(input[count]), nil
 	}
-	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds)
 	err := cmdtesting.InitCommand(command, args)
 	if err != nil {
 		return nil, err
