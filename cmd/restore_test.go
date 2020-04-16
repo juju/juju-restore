@@ -32,6 +32,7 @@ type restoreSuite struct {
 	converter func(member core.ReplicaSetMember) core.ControllerNode
 	readFunc  func(*corecmd.Context) (string, error)
 	loadCreds func() (string, string, error)
+	devMode   bool
 }
 
 var _ = gc.Suite(&restoreSuite{})
@@ -115,7 +116,14 @@ var commandArgsTests = []restoreCommandTestData{
 }
 
 func (s *restoreSuite) TestArgParsing(c *gc.C) {
-	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds)
+	command := cmd.NewRestoreCommand(
+		s.connectF,
+		s.openF,
+		s.converter,
+		s.readFunc,
+		s.loadCreds,
+		s.devMode,
+	)
 	for i, test := range commandArgsTests {
 		c.Logf("%d: %s", i, test.title)
 		err := cmdtesting.InitCommand(command, test.args)
@@ -427,6 +435,7 @@ func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
 		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 		return node
 	}
+	s.devMode = true
 	ctx, err := s.runCmd(c, "y", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
@@ -447,6 +456,7 @@ func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
 		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 		return node
 	}
+	s.devMode = true
 	ctx, err := s.runCmd(c, "yy", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
@@ -535,7 +545,7 @@ func (s *restoreSuite) runCmdNoUser(c *gc.C, input string, args ...string) (*cor
 		count++
 		return string(input[count]), nil
 	}
-	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds, s.devMode)
 	err := cmdtesting.InitCommand(command, args)
 	if err != nil {
 		return nil, err
