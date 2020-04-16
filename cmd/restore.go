@@ -5,11 +5,13 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/gnuflag"
 	"github.com/juju/loggo"
+	"github.com/juju/utils"
 
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
@@ -29,17 +31,28 @@ func NewRestoreCommand(
 	openBackup func(path, tempRoot string) (core.BackupFile, error),
 	machineConverter func(member core.ReplicaSetMember) core.ControllerNode,
 	readFunc func(*cmd.Context) (string, error),
+	loadCreds func() (string, string, error),
+	devMode bool,
 ) cmd.Command {
 	return &restoreCommand{
 		connect:     dbConnect,
 		openBackup:  openBackup,
 		converter:   machineConverter,
 		readOneChar: readFunc,
+		loadCreds:   loadCreds,
+		devMode:     devMode,
 	}
 }
 
 type restoreCommand struct {
 	cmd.CommandBase
+
+	connect     func(info db.DialInfo) (core.Database, error)
+	openBackup  func(path, tempRoot string) (core.BackupFile, error)
+	converter   func(member core.ReplicaSetMember) core.ControllerNode
+	readOneChar func(*cmd.Context) (string, error)
+	loadCreds   func() (string, string, error)
+	devMode     bool
 
 	hostname string
 	port     string
@@ -54,9 +67,6 @@ type restoreCommand struct {
 	restoreLog           string
 	includeStatusHistory bool
 
-	connect    func(info db.DialInfo) (core.Database, error)
-	openBackup func(path, tempRoot string) (core.BackupFile, error)
-
 	// manualAgentControl determines if 'juju-restore' or the operator
 	// manages - stops and starts juju and mongo agents - on
 	// other, non-primary controller nodes.
@@ -64,14 +74,12 @@ type restoreCommand struct {
 	// to other controller nodes.
 	manualAgentControl bool
 
-	ui          *UserInteractions
-	restorer    *core.Restorer
-	converter   func(member core.ReplicaSetMember) core.ControllerNode
-	readOneChar func(*cmd.Context) (string, error)
+	ui       *UserInteractions
+	restorer *core.Restorer
 
-	// To be used as an option during development to enable an easier way to re-start
-	// all agents in HA federation.
-	// XXXXXXXXXXXXX Remove ME
+	// To be used as an option during development to enable an easier
+	// way to re-start all agents in HA federation.
+	// TODO: Remove once complete.
 	restart bool
 }
 
@@ -91,15 +99,17 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.hostname, "hostname", "localhost", "hostname of the Juju MongoDB server")
 	f.StringVar(&c.port, "port", "37017", "port of the Juju MongoDB server")
 	f.BoolVar(&c.ssl, "ssl", true, "use SSL to connect to MongoDB")
-	f.StringVar(&c.username, "username", "admin", "user for connecting to MongoDB (\"\" for no authentication)")
+	f.StringVar(&c.username, "username", "", "user for connecting to MongoDB (omit to get credentials from agent.conf)")
 	f.StringVar(&c.password, "password", "", "password for connecting to MongoDB")
 	f.StringVar(&c.loggingConfig, "logging-config", defaultLogConfig, "set logging levels")
 	f.BoolVar(&c.verbose, "verbose", false, "more output from restore (debug logging)")
 	f.BoolVar(&c.manualAgentControl, "manual-agent-control", false, "operator manages secondary controller nodes in HA, e.g stops/starts Juju and Mongo agents")
-	f.BoolVar(&c.restart, "rs", false, "REMOVE ME")
 	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
 	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "location to write mongorestore logging output")
 	f.BoolVar(&c.includeStatusHistory, "include-status-history", false, "restore status history for machines and units (can be large)")
+	if c.devMode {
+		f.BoolVar(&c.restart, "rs", false, "just restart agents that were stopped (JUJU_RESTORE_DEV_MODE)")
+	}
 }
 
 // Init is part of cmd.Command.
@@ -123,13 +133,23 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+
+	username := c.username
+	password := c.password
+	if c.username == "" {
+		username, password, err = c.loadCreds()
+		if err != nil {
+			return errors.Annotate(err, "loading credentials")
+		}
+	}
+
 	c.ui = NewUserInteractions(ctx, c.readOneChar)
 	c.ui.Notify("Connecting to database...\n")
 	database, err := c.connect(db.DialInfo{
 		Hostname: c.hostname,
 		Port:     c.port,
-		Username: c.username,
-		Password: c.password,
+		Username: username,
+		Password: password,
 		SSL:      c.ssl,
 	})
 	if err != nil {
@@ -252,4 +272,43 @@ func (c *restoreCommand) manipulateAgents(operation func(bool) map[string]error)
 		}
 	}
 	return nil
+}
+
+const agentConfPattern = "/var/lib/juju/agents/machine-*/agent.conf"
+
+// ReadCredsFromAgentConf tries to load a mongo username and password
+// from the standard agent.conf location on a controller machine.
+func ReadCredsFromAgentConf() (string, string, error) {
+	return ReadCredsFromPattern(agentConfPattern)
+}
+
+// ReadCredsFromPattern tries to load a mongo username and password
+// from the first file it finds matching the pattern passed in.
+func ReadCredsFromPattern(pattern string) (string, string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", "", errors.Trace(err)
+	}
+	if len(matches) == 0 {
+		return "", "", errors.Errorf("couldn't find an agent.conf - please specify username and password")
+	}
+	conf := matches[0]
+
+	var creds struct {
+		Username string `yaml:"tag"`
+		Password string `yaml:"statepassword"`
+	}
+	err = utils.ReadYaml(conf, &creds)
+	if err != nil {
+		return "", "", errors.Annotatef(err, "reading %q", conf)
+	}
+
+	if creds.Username == "" {
+		return "", "", errors.Errorf("no username found in %q - tag field is missing or blank", conf)
+	}
+	if creds.Password == "" {
+		return "", "", errors.Errorf("no password found in %q - statepassword field is missing or blank", conf)
+	}
+
+	return creds.Username, creds.Password, nil
 }

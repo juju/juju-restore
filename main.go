@@ -38,6 +38,8 @@ func Run(args []string) int {
 		backup.Open,
 		machine.ControllerNodeForReplicaSetMember,
 		cmd.ReadOneChar,
+		cmd.ReadCredsFromAgentConf,
+		os.Getenv("JUJU_RESTORE_DEV_MODE") == "on",
 	)
 	return corecmd.Main(restorer, ctx, args[1:])
 }
