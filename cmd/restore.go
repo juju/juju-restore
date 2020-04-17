@@ -52,7 +52,9 @@ type restoreCommand struct {
 	converter   func(member core.ReplicaSetMember) core.ControllerNode
 	readOneChar func(*cmd.Context) (string, error)
 	loadCreds   func() (string, string, error)
-	devMode     bool
+
+	allowDowngrade bool
+	devMode        bool
 
 	hostname string
 	port     string
@@ -107,6 +109,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
 	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "location to write mongorestore logging output")
 	f.BoolVar(&c.includeStatusHistory, "include-status-history", false, "restore status history for machines and units (can be large)")
+	f.BoolVar(&c.allowDowngrade, "allow-downgrade", false, "allow restoring a backup from an older Juju version")
 	if c.devMode {
 		f.BoolVar(&c.restart, "rs", false, "just restart agents that were stopped (JUJU_RESTORE_DEV_MODE)")
 	}
@@ -195,7 +198,7 @@ func (c *restoreCommand) runPreChecks() error {
 	}
 	c.ui.Notify(dbHealthComplete)
 
-	precheckResult, err := c.restorer.CheckRestorable()
+	precheckResult, err := c.restorer.CheckRestorable(c.allowDowngrade)
 	if err != nil {
 		return errors.Annotate(err, "precheck")
 	}

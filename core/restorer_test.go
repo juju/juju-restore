@@ -443,15 +443,92 @@ func (s *restorerSuite) TestCheckRestorable(c *gc.C) {
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable()
+	result, err := r.CheckRestorable(false)
 	c.Assert(err, jc.ErrorIsNil)
 
 	c.Assert(result, gc.DeepEquals, &core.PrecheckResult{
-		BackupDate:          created,
-		ControllerModelUUID: "alex the astronaut",
-		JujuVersion:         version.MustParse("2.8-beta5.3"),
-		ModelCount:          3,
+		BackupDate:            created,
+		ControllerModelUUID:   "alex the astronaut",
+		BackupJujuVersion:     version.MustParse("2.8-beta5.3"),
+		ControllerJujuVersion: version.MustParse("2.8-beta5.6"),
+		ModelCount:            3,
 	})
+}
+
+func (s *restorerSuite) TestCheckRestorableAllowDowngrade(c *gc.C) {
+	created, err := time.Parse(time.RFC3339, "2020-03-17T12:24:30Z")
+	c.Assert(err, jc.ErrorIsNil)
+	r, err := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				ControllerModelUUID: "alex the astronaut",
+				JujuVersion:         version.MustParse("2.8-beta5.6"),
+				HANodes:             5,
+				Series:              "eoan",
+			}, nil
+		},
+	}, &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				ControllerModelUUID: "alex the astronaut",
+				JujuVersion:         version.MustParse("2.7.6.3"),
+				Series:              "eoan",
+				BackupCreated:       created,
+				ModelCount:          3,
+				HANodes:             5,
+			}, nil
+		},
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+
+	result, err := r.CheckRestorable(true)
+	c.Assert(err, jc.ErrorIsNil)
+
+	c.Assert(result, gc.DeepEquals, &core.PrecheckResult{
+		BackupDate:            created,
+		ControllerModelUUID:   "alex the astronaut",
+		BackupJujuVersion:     version.MustParse("2.7.6.3"),
+		ControllerJujuVersion: version.MustParse("2.8-beta5.6"),
+		ModelCount:            3,
+	})
+}
+
+func (s *restorerSuite) TestCheckRestorableWithAllowDowngradeButUpgrading(c *gc.C) {
+	created, err := time.Parse(time.RFC3339, "2020-03-17T12:24:30Z")
+	c.Assert(err, jc.ErrorIsNil)
+
+	r, err := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				ControllerModelUUID: "porridge radio",
+				JujuVersion:         version.MustParse("2.7.6"),
+				HANodes:             5,
+				Series:              "eoan",
+			}, nil
+		},
+	}, &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				ControllerModelUUID: "porridge radio",
+				JujuVersion:         version.MustParse("2.8-beta5.3"),
+				Series:              "eoan",
+				BackupCreated:       created,
+				ModelCount:          3,
+				HANodes:             5,
+			}, nil
+		},
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+
+	result, err := r.CheckRestorable(true)
+	c.Assert(err, gc.ErrorMatches, `backup juju version "2.8-beta5.3" is greater than controller version "2.7.6"`)
+	c.Assert(result, gc.IsNil)
 }
 
 func (s *restorerSuite) checkRestorableMismatch(c *gc.C, expectErr string, tweak func(*core.ControllerInfo)) {
@@ -487,7 +564,7 @@ func (s *restorerSuite) checkRestorableMismatch(c *gc.C, expectErr string, tweak
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable()
+	result, err := r.CheckRestorable(false)
 	c.Assert(err, gc.ErrorMatches, expectErr)
 	c.Assert(result, gc.IsNil)
 }

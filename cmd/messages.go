@@ -40,7 +40,7 @@ Do you want 'juju-restore' to manage these agents automatically? (y/N): `
 
 	backupFileTemplate = `
 You are about to restore a controller from a backup file taken on {{.BackupDate}}. 
-It contains a controller {{.ControllerModelUUID}} at Juju version {{.JujuVersion}} with {{.ModelCount}} models.
+It contains a controller {{.ControllerModelUUID}} at Juju version {{.BackupJujuVersion}} with {{.ModelCount}} models.
 `
 
 	preChecksCompleted = `
@@ -60,6 +60,9 @@ To stop the agents, login into each secondary controller and run:
 func populate(aTemplate string, data interface{}) string {
 	t := template.Must(template.New("fragment").Parse(aTemplate))
 	content := bytes.Buffer{}
-	t.Execute(&content, data)
+	err := t.Execute(&content, data)
+	if err != nil {
+		logger.Errorf("creating user message: %v", err)
+	}
 	return content.String()
 }

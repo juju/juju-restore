@@ -114,8 +114,14 @@ type PrecheckResult struct {
 	// backup was taken.
 	ControllerModelUUID string
 
-	// JujuVersion is the Juju version of the controller from which backup was taken.
-	JujuVersion version.Number
+	// BackupJujuVersion is the Juju version of the controller from which backup was taken.
+	BackupJujuVersion version.Number
+
+	// ControllerJujuVersion is the Juju version of the controller
+	// we're restoring into. If it's greater than BackupJujuVersion
+	// (disregarding build number) then restoring this version is also
+	// a downgrade.
+	ControllerJujuVersion version.Number
 
 	// ModelCount is the count of models that this backup contains.
 	ModelCount int

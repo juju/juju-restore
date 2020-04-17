@@ -188,7 +188,7 @@ func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error
 
 // CheckRestorable checks whether the backup file can be restored into
 // the target database.
-func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
+func (r *Restorer) CheckRestorable(allowDowngrade bool) (*PrecheckResult, error) {
 	backup, err := r.backup.Metadata()
 	if err != nil {
 		return nil, errors.Annotate(err, "getting backup metadata")
@@ -200,7 +200,20 @@ func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
 
 	// Disregard differences in build numbers - we don't want to
 	// prevent restores when fixing code bugs.
-	if !versionsMatchExcludingBuild(backup.JujuVersion, controller.JujuVersion) {
+	controllerVersion := controller.JujuVersion
+	controllerVersion.Build = 0
+	backupVersion := backup.JujuVersion
+	backupVersion.Build = 0
+
+	if allowDowngrade {
+		if backupVersion.Compare(controllerVersion) == 1 {
+			return nil, errors.Errorf("backup juju version %q is greater than controller version %q",
+				backup.JujuVersion,
+				controller.JujuVersion,
+			)
+
+		}
+	} else if controllerVersion != backupVersion {
 		return nil, errors.Errorf("juju versions don't match - backup: %q, controller: %q",
 			backup.JujuVersion,
 			controller.JujuVersion,
@@ -229,10 +242,11 @@ func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
 	}
 
 	return &PrecheckResult{
-		BackupDate:          backup.BackupCreated,
-		ControllerModelUUID: backup.ControllerModelUUID,
-		JujuVersion:         backup.JujuVersion,
-		ModelCount:          backup.ModelCount,
+		BackupDate:            backup.BackupCreated,
+		ControllerModelUUID:   backup.ControllerModelUUID,
+		BackupJujuVersion:     backup.JujuVersion,
+		ControllerJujuVersion: controller.JujuVersion,
+		ModelCount:            backup.ModelCount,
 	}, nil
 }
 
