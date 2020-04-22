@@ -103,6 +103,10 @@ type ControllerNode interface {
 
 	// StartAgent starts jujud-machine-* service on the controller node.
 	StartAgent() error
+
+	// UpdateAgentVersion changes the tools symlink and agent.conf for
+	// this machine to match the specified version.
+	UpdateAgentVersion(version.Number) error
 }
 
 // PrecheckResult contains the results of a pre-check run.

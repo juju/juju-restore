@@ -611,6 +611,11 @@ func (f *fakeControllerNode) StartAgent() error {
 	return f.NextErr()
 }
 
+func (f *fakeControllerNode) UpdateAgentVersion(target version.Number) error {
+	f.Stub.MethodCall(f, "UpdateAgentVersion", target)
+	return f.NextErr()
+}
+
 type fakeBackup struct {
 	testing.Stub
 	metadataF func() (core.BackupMetadata, error)
