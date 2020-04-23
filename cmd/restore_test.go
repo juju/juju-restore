@@ -478,12 +478,25 @@ func (s *restoreSuite) TestLoadsCredsIfNoUsername(c *gc.C) {
 	c.Assert(err, gc.ErrorMatches, "loading credentials: loading those creds")
 }
 
+type readerFunc func(string) ([]byte, error)
+
+func makeFakeReader(c *gc.C, expectedPath string, contents []byte) readerFunc {
+	return func(path string) ([]byte, error) {
+		c.Assert(path, gc.Equals, expectedPath)
+		return contents, nil
+	}
+}
+
 func (s *restoreSuite) TestReadCredsFromPattern(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(agentConfContents), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	username, password, err := cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	username, password, err := cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(agentConfContents)),
+	)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(username, gc.Equals, "porridge-radio")
 	c.Assert(password, gc.Equals, "lilac")
@@ -491,19 +504,27 @@ func (s *restoreSuite) TestReadCredsFromPattern(c *gc.C) {
 
 func (s *restoreSuite) TestReadCredsMissingUsername(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingTagConf), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	_, _, err = cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(missingTagConf)),
+	)
 	c.Assert(err, gc.ErrorMatches, `no username found in ".*/agent\.conf" - tag field is missing or blank`)
 }
 
 func (s *restoreSuite) TestReadCredsMissingPassword(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingPasswordConf), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	_, _, err = cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(missingPasswordConf)),
+	)
 	c.Assert(err, gc.ErrorMatches, `no password found in ".*/agent\.conf" - statepassword field is missing or blank`)
 }
 
