@@ -248,7 +248,7 @@ func (s *restorerSuite) checkSecondaryControllerNodes(c *gc.C, expected map[stri
 
 func (s *restorerSuite) TestCheckSecondaryControllerNodesOk(c *gc.C) {
 	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
-		return &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return &fakeControllerNode{ip: member.Name}
 	}
 	s.checkSecondaryControllerNodes(c, map[string]error{"wot": nil})
 }
@@ -256,7 +256,7 @@ func (s *restorerSuite) TestCheckSecondaryControllerNodesOk(c *gc.C) {
 func (s *restorerSuite) TestCheckSecondaryControllerNodesFail(c *gc.C) {
 	err := errors.New("boom")
 	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
-		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		node := &fakeControllerNode{ip: member.Name}
 		node.SetErrors(err)
 		return node
 	}
@@ -273,7 +273,7 @@ type agentMgmtTest struct {
 func (s *restorerSuite) checkManagedAgents(c *gc.C, t agentMgmtTest) []*fakeControllerNode {
 	nodes := []*fakeControllerNode{}
 	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
-		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		node := &fakeControllerNode{ip: member.Name}
 		nodes = append(nodes, node)
 		if e := t.nodeErrs[member.Name]; e != "" {
 			node.SetErrors(errors.New(e))
@@ -601,7 +601,7 @@ func (s *restorerSuite) TestCheckRestorableMismatchSeries(c *gc.C) {
 	)
 }
 
-func (s *restorerSuite) TestRestore(c *gc.C) {
+func (s *restorerSuite) TestRestoreSameVersion(c *gc.C) {
 	db := fakeDatabase{
 		replicaSetF: func() (core.ReplicaSet, error) {
 			return core.ReplicaSet{
@@ -617,6 +617,11 @@ func (s *restorerSuite) TestRestore(c *gc.C) {
 				},
 			}, nil
 		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				JujuVersion: version.MustParse("2.7.6"),
+			}, nil
+		},
 	}
 	r, err := core.NewRestorer(
 		&db,
@@ -624,16 +629,142 @@ func (s *restorerSuite) TestRestore(c *gc.C) {
 			dumpDirF: func() string {
 				return "the dump dir!"
 			},
+			metadataF: func() (core.BackupMetadata, error) {
+				return core.BackupMetadata{
+					JujuVersion: version.MustParse("2.7.6"),
+				}, nil
+			},
 		},
 		s.converter,
 	)
 	c.Assert(err, jc.ErrorIsNil)
 	db.SetErrors(errors.Errorf("bad!"))
 	err = r.Restore("log path", true)
-	c.Assert(err, gc.ErrorMatches, "bad!")
+	c.Assert(err, gc.ErrorMatches, `restoring dump from "the dump dir!": bad!`)
 
-	c.Assert(db.Calls(), gc.HasLen, 2)
-	db.CheckCall(c, 1, "RestoreFromDump", "the dump dir!", "log path", true)
+	c.Assert(db.Calls(), gc.HasLen, 3)
+	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true)
+}
+
+func (s *restorerSuite) TestRestoreDowngrade(c *gc.C) {
+	machines := []fakeControllerNode{
+		{ip: "1.1.1.1"},
+		{ip: "1.1.1.2"},
+	}
+	convertToMachine := func(member core.ReplicaSetMember) core.ControllerNode {
+		return &machines[member.ID]
+	}
+	db := fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy:       true,
+					ID:            0,
+					Name:          "djula",
+					State:         "PRIMARY",
+					Self:          true,
+					JujuMachineID: "2",
+				}, {
+					Healthy:       true,
+					ID:            1,
+					Name:          "cosmonauts",
+					State:         "SECONDARY",
+					Self:          false,
+					JujuMachineID: "3",
+				}},
+			}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				JujuVersion: version.MustParse("2.8-beta1"),
+			}, nil
+		},
+	}
+	r, err := core.NewRestorer(
+		&db,
+		&fakeBackup{
+			dumpDirF: func() string {
+				return "the dump dir!"
+			},
+			metadataF: func() (core.BackupMetadata, error) {
+				return core.BackupMetadata{
+					JujuVersion: version.MustParse("2.7.6"),
+				}, nil
+			},
+		},
+		convertToMachine,
+	)
+	c.Assert(err, jc.ErrorIsNil)
+	err = r.Restore("log path", true)
+	c.Assert(err, jc.ErrorIsNil)
+
+	c.Assert(db.Calls(), gc.HasLen, 3)
+	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true)
+
+	for i, machine := range machines {
+		c.Logf("machine %d", i)
+		machine.CheckCallNames(c, "IP", "UpdateAgentVersion")
+		machine.CheckCall(c, 1, "UpdateAgentVersion", version.MustParse("2.7.6"))
+	}
+}
+
+func (s *restorerSuite) TestRestoreDowngradeError(c *gc.C) {
+	machines := []fakeControllerNode{
+		{ip: "1.1.1.1"},
+		{ip: "1.1.1.2"},
+	}
+	convertToMachine := func(member core.ReplicaSetMember) core.ControllerNode {
+		return &machines[member.ID]
+	}
+	db := fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{
+				Members: []core.ReplicaSetMember{{
+					Healthy:       true,
+					ID:            0,
+					Name:          "djula",
+					State:         "PRIMARY",
+					Self:          true,
+					JujuMachineID: "2",
+				}, {
+					Healthy:       true,
+					ID:            1,
+					Name:          "cosmonauts",
+					State:         "SECONDARY",
+					Self:          false,
+					JujuMachineID: "3",
+				}},
+			}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return core.ControllerInfo{
+				JujuVersion: version.MustParse("2.8-beta1"),
+			}, nil
+		},
+	}
+	r, err := core.NewRestorer(
+		&db,
+		&fakeBackup{
+			dumpDirF: func() string {
+				return "the dump dir!"
+			},
+			metadataF: func() (core.BackupMetadata, error) {
+				return core.BackupMetadata{
+					JujuVersion: version.MustParse("2.7.6"),
+				}, nil
+			},
+		},
+		convertToMachine,
+	)
+	c.Assert(err, jc.ErrorIsNil)
+
+	machines[0].SetErrors(errors.New("stuff went bad"))
+	machines[1].SetErrors(errors.New("oopsy daisy"))
+
+	err = r.Restore("log path", true)
+	c.Assert(err, gc.ErrorMatches, `
+problems updating controllers to version "2.7.6": updating node 1.1.1.1: stuff went bad
+updating node 1.1.1.2: oopsy daisy`[1:])
 }
 
 type fakeDatabase struct {
@@ -662,8 +793,12 @@ func (db *fakeDatabase) Close() {
 }
 
 type fakeControllerNode struct {
-	*testing.Stub
+	testing.Stub
 	ip string
+}
+
+func (f *fakeControllerNode) String() string {
+	return "node " + f.ip
 }
 
 func (f *fakeControllerNode) IP() string {
