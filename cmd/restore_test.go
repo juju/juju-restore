@@ -148,8 +148,11 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 All restore pre-checks are completed.
 
@@ -198,8 +201,11 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 All restore pre-checks are completed.
 
@@ -263,14 +269,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 
@@ -297,14 +304,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 
@@ -333,14 +341,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 All restore pre-checks are completed.
@@ -367,12 +376,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
-    $ systemctl stop jujud-machine-*
+    $ sudo systemctl stop jujud-machine-*
 
 All restore pre-checks are completed.
 
@@ -412,12 +424,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
-    $ systemctl stop jujud-machine-*
+    $ sudo systemctl stop jujud-machine-*
 
 All restore pre-checks are completed.
 
