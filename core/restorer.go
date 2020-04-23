@@ -4,6 +4,8 @@
 package core
 
 import (
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/juju/clock"
@@ -102,7 +104,9 @@ func (r *Restorer) CheckSecondaryControllerNodes() map[string]error {
 func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
 	// When stopping agents we want to stop primary last in an attempt to
 	// avoid re-election now - we are stopping anyway.
-	return r.manageAgents(stopSecondaries, func(n ControllerNode) error { return n.StopAgent() }, false)
+	return r.manageAgents(stopSecondaries, false, func(n ControllerNode) error {
+		return n.StopAgent()
+	})
 }
 
 // StartAgents starts controller agents, jujud-machine-*.
@@ -114,7 +118,9 @@ func (r *Restorer) StartAgents(startSecondaries bool) map[string]error {
 	r.replicaSetStabilised()
 	// When starting agents we want to start primary first in an attempt to
 	// preserve it being a primary.
-	return r.manageAgents(startSecondaries, func(n ControllerNode) error { return n.StartAgent() }, true)
+	return r.manageAgents(startSecondaries, true, func(n ControllerNode) error {
+		return n.StartAgent()
+	})
 }
 
 func (r *Restorer) replicaSetStabilised() {
@@ -160,7 +166,7 @@ func (r *Restorer) replicaSetStabilised() {
 	}
 }
 
-func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error, primaryFirst bool) map[string]error {
+func (r *Restorer) manageAgents(all bool, primaryFirst bool, operation func(n ControllerNode) error) map[string]error {
 	var primary ControllerNode
 	result := map[string]error{}
 	secondaries := []ControllerNode{}
@@ -188,7 +194,7 @@ func (r *Restorer) manageAgents(all bool, operation func(n ControllerNode) error
 
 // CheckRestorable checks whether the backup file can be restored into
 // the target database.
-func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
+func (r *Restorer) CheckRestorable(allowDowngrade bool) (*PrecheckResult, error) {
 	backup, err := r.backup.Metadata()
 	if err != nil {
 		return nil, errors.Annotate(err, "getting backup metadata")
@@ -200,7 +206,22 @@ func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
 
 	// Disregard differences in build numbers - we don't want to
 	// prevent restores when fixing code bugs.
-	if !versionsMatchExcludingBuild(backup.JujuVersion, controller.JujuVersion) {
+	controllerVersion := controller.JujuVersion
+	controllerVersion.Build = 0
+	backupVersion := backup.JujuVersion
+	backupVersion.Build = 0
+
+	if allowDowngrade {
+		if backupVersion.Compare(controllerVersion) == 1 {
+			return nil, errors.Errorf("backup juju version %q is greater than controller version %q",
+				backup.JujuVersion,
+				controller.JujuVersion,
+			)
+
+		}
+	} else if backupVersion.Compare(controllerVersion) == -1 {
+		return nil, errors.Errorf("restoring backup would downgrade from juju %q to %q - pass --allow-downgrade if this is intended", controllerVersion, backupVersion)
+	} else if controllerVersion != backupVersion {
 		return nil, errors.Errorf("juju versions don't match - backup: %q, controller: %q",
 			backup.JujuVersion,
 			controller.JujuVersion,
@@ -229,18 +250,58 @@ func (r *Restorer) CheckRestorable() (*PrecheckResult, error) {
 	}
 
 	return &PrecheckResult{
-		BackupDate:          backup.BackupCreated,
-		ControllerModelUUID: backup.ControllerModelUUID,
-		JujuVersion:         backup.JujuVersion,
-		ModelCount:          backup.ModelCount,
+		BackupDate:            backup.BackupCreated,
+		ControllerModelUUID:   backup.ControllerModelUUID,
+		BackupJujuVersion:     backup.JujuVersion,
+		ControllerJujuVersion: controller.JujuVersion,
+		ModelCount:            backup.ModelCount,
 	}, nil
 }
 
 // Restore replaces the database's contents with the data from the
 // backup's database dump.
 func (r *Restorer) Restore(logPath string, includeStatusHistory bool) error {
-	err := r.db.RestoreFromDump(r.backup.DumpDirectory(), logPath, includeStatusHistory)
-	return errors.Trace(err)
+	controller, err := r.db.ControllerInfo()
+	if err != nil {
+		return errors.Annotate(err, "getting controller info")
+	}
+	metadata, err := r.backup.Metadata()
+	if err != nil {
+		return errors.Annotatef(err, "getting backup metadata")
+	}
+	logger.Debugf("restoring dump")
+	err = r.db.RestoreFromDump(r.backup.DumpDirectory(), logPath, includeStatusHistory)
+	if err != nil {
+		return errors.Annotatef(err, "restoring dump from %q", r.backup.DumpDirectory())
+	}
+	if controller.JujuVersion != metadata.JujuVersion {
+		logger.Debugf("updating controller agent versions to %s", metadata.JujuVersion)
+		results := r.manageAgents(true, true, func(n ControllerNode) error {
+			logger.Debugf("    %s", n)
+			err := n.UpdateAgentVersion(metadata.JujuVersion)
+			return errors.Annotatef(err, "updating %s", n)
+		})
+		if err := collectMachineErrors(results); err != nil {
+			return errors.Annotatef(err, "problems updating controllers to version %q", metadata.JujuVersion)
+		}
+	}
+	return nil
+}
+
+func collectMachineErrors(results map[string]error) error {
+	var messages []string
+	for _, err := range results {
+		if err == nil {
+			continue
+		}
+		messages = append(messages, err.Error())
+	}
+	if len(messages) == 0 {
+		return nil
+	}
+	// Ensure they're reported in a consistent order.
+	sort.Strings(messages)
+	return errors.Errorf(strings.Join(messages, "\n"))
 }
 
 func versionsMatchExcludingBuild(a, b version.Number) bool {
