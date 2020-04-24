@@ -148,8 +148,11 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 All restore pre-checks are completed.
 
@@ -198,8 +201,11 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 All restore pre-checks are completed.
 
@@ -263,14 +269,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 
@@ -297,14 +304,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 
@@ -333,14 +341,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
-This controller is in HA and to restore into it successfully, 
-'juju-restore' needs to manage Juju and Mongo agents on  
-secondary controller nodes.
-However, on the bigger systems, the operator might want to manage 
-these agents manually.
+This controller is in HA and to restore into it successfully, 'juju-restore' 
+needs to manage Juju and Mongo agents on secondary controller nodes.
+However on bigger systems the user might want to manage these agents manually.
 
 Do you want 'juju-restore' to manage these agents automatically? (y/N): 
 All restore pre-checks are completed.
@@ -367,12 +376,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
-    $ systemctl stop jujud-machine-*
+    $ sudo systemctl stop jujud-machine-*
 
 All restore pre-checks are completed.
 
@@ -412,12 +424,15 @@ Checking database and replica set health...
 Replica set is healthy     ✓
 Running on primary HA node ✓
 
-You are about to restore a controller from a backup file taken on 2020-03-17 16:28:24 +0000 UTC. 
-It contains a controller how-bizarre at Juju version 2.7.5 with 3 models.
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
-    $ systemctl stop jujud-machine-*
+    $ sudo systemctl stop jujud-machine-*
 
 All restore pre-checks are completed.
 
@@ -478,12 +493,25 @@ func (s *restoreSuite) TestLoadsCredsIfNoUsername(c *gc.C) {
 	c.Assert(err, gc.ErrorMatches, "loading credentials: loading those creds")
 }
 
+type readerFunc func(string) ([]byte, error)
+
+func makeFakeReader(c *gc.C, expectedPath string, contents []byte) readerFunc {
+	return func(path string) ([]byte, error) {
+		c.Assert(path, gc.Equals, expectedPath)
+		return contents, nil
+	}
+}
+
 func (s *restoreSuite) TestReadCredsFromPattern(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(agentConfContents), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	username, password, err := cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	username, password, err := cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(agentConfContents)),
+	)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(username, gc.Equals, "porridge-radio")
 	c.Assert(password, gc.Equals, "lilac")
@@ -491,19 +519,27 @@ func (s *restoreSuite) TestReadCredsFromPattern(c *gc.C) {
 
 func (s *restoreSuite) TestReadCredsMissingUsername(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingTagConf), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	_, _, err = cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(missingTagConf)),
+	)
 	c.Assert(err, gc.ErrorMatches, `no username found in ".*/agent\.conf" - tag field is missing or blank`)
 }
 
 func (s *restoreSuite) TestReadCredsMissingPassword(c *gc.C) {
 	dir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(dir, "agent.conf"), []byte(missingPasswordConf), 0777)
+	confPath := filepath.Join(dir, "agent.conf")
+	err := ioutil.WriteFile(confPath, nil, 0777)
 	c.Assert(err, jc.ErrorIsNil)
 
-	_, _, err = cmd.ReadCredsFromPattern(filepath.Join(dir, "*.conf"))
+	_, _, err = cmd.ReadCredsFromPattern(
+		filepath.Join(dir, "*.conf"),
+		makeFakeReader(c, confPath, []byte(missingPasswordConf)),
+	)
 	c.Assert(err, gc.ErrorMatches, `no password found in ".*/agent\.conf" - statepassword field is missing or blank`)
 }
 

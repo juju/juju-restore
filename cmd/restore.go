@@ -4,14 +4,16 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/gnuflag"
 	"github.com/juju/loggo"
-	"github.com/juju/utils"
+	"gopkg.in/yaml.v2"
 
 	"github.com/juju/juju-restore/core"
 	"github.com/juju/juju-restore/db"
@@ -282,12 +284,12 @@ const agentConfPattern = "/var/lib/juju/agents/machine-*/agent.conf"
 // ReadCredsFromAgentConf tries to load a mongo username and password
 // from the standard agent.conf location on a controller machine.
 func ReadCredsFromAgentConf() (string, string, error) {
-	return ReadCredsFromPattern(agentConfPattern)
+	return ReadCredsFromPattern(agentConfPattern, readFileWithSudo)
 }
 
 // ReadCredsFromPattern tries to load a mongo username and password
 // from the first file it finds matching the pattern passed in.
-func ReadCredsFromPattern(pattern string) (string, string, error) {
+func ReadCredsFromPattern(pattern string, readFile func(string) ([]byte, error)) (string, string, error) {
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return "", "", errors.Trace(err)
@@ -301,9 +303,14 @@ func ReadCredsFromPattern(pattern string) (string, string, error) {
 		Username string `yaml:"tag"`
 		Password string `yaml:"statepassword"`
 	}
-	err = utils.ReadYaml(conf, &creds)
+
+	data, err := readFile(conf)
 	if err != nil {
-		return "", "", errors.Annotatef(err, "reading %q", conf)
+		return "", "", errors.Annotatef(err, "reading %q with sudo", conf)
+	}
+	err = yaml.Unmarshal(data, &creds)
+	if err != nil {
+		return "", "", errors.Annotatef(err, "unmarshalling %q", conf)
 	}
 
 	if creds.Username == "" {
@@ -314,4 +321,15 @@ func ReadCredsFromPattern(pattern string) (string, string, error) {
 	}
 
 	return creds.Username, creds.Password, nil
+}
+
+func readFileWithSudo(path string) ([]byte, error) {
+	command := exec.Command("sudo", "cat", path)
+	var out, cmdErr bytes.Buffer
+	command.Stdout = &out
+	command.Stderr = &cmdErr
+	if err := command.Run(); err != nil {
+		return nil, errors.Trace(err)
+	}
+	return out.Bytes(), nil
 }
