@@ -34,6 +34,14 @@ type DialInfo struct {
 
 // Dial creates a new connection to the specified database.
 func Dial(args DialInfo) (core.Database, error) {
+	session, err := dial(args)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return &database{session: session, info: args}, nil
+}
+
+func dial(args DialInfo) (*mgo.Session, error) {
 	info := mgo.DialInfo{
 		Addrs:    []string{net.JoinHostPort(args.Hostname, args.Port)},
 		Database: "admin",
@@ -51,7 +59,7 @@ func Dial(args DialInfo) (core.Database, error) {
 	// We need to set preference to nearest since we're connecting
 	// directly, not to all the nodes in the replicaset.
 	session.SetMode(readPreferenceNearest, false)
-	return &database{session: session, info: args}, nil
+	return session, nil
 }
 
 const readPreferenceNearest = 6
@@ -207,6 +215,18 @@ func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistor
 	command.Stdout = dest
 	command.Stderr = dest
 	return errors.Annotatef(command.Run(), "running %s", restoreBinary)
+}
+
+// Reconnect is used to reconnect to the database after it's been
+// restarted.
+func (db *database) Reconnect() error {
+	db.session.Close()
+	session, err := dial(db.info)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	db.session = session
+	return nil
 }
 
 // Close is part of core.Database.

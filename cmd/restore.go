@@ -182,6 +182,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err := c.runPreChecks(); err != nil {
 		return errors.Trace(err)
 	}
+
 	// Actual restore
 	if err := c.restore(); err != nil {
 		return errors.Trace(err)
@@ -190,6 +191,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 	if err := c.runPostChecks(); err != nil {
 		return errors.Trace(err)
 	}
+
 	return nil
 }
 
@@ -245,18 +247,46 @@ func (c *restoreCommand) restore() error {
 	if err := c.manipulateAgents(c.restorer.StopAgents); err != nil {
 		return errors.Trace(err)
 	}
-	c.ui.Notify("\nRunning restore...\n")
-	c.ui.Notify(fmt.Sprintf("Detailed mongorestore output in %s.\n", c.restoreLog))
-	if err := c.restorer.Restore(c.restoreLog, c.includeStatusHistory); err != nil {
+	snapshotter, err := c.restorer.Snapshotter()
+	if err != nil {
+		return errors.Annotate(err, "making snapshotter")
+	}
+
+	c.ui.Notify("\nSnapshotting database...\n")
+	err = snapshotter.Snapshot()
+	if err != nil {
+		return errors.Annotate(err, "creating db snapshots")
+	}
+
+	// Double-check that the database is in a good state.
+	if err := c.restorer.WaitForReplicaSet(); err != nil {
 		return errors.Trace(err)
 	}
 
-	c.ui.Notify("\nDatabase restore complete.")
+	c.ui.Notify("Running restore...\n")
+	c.ui.Notify(fmt.Sprintf("Detailed mongorestore output in %s.\n", c.restoreLog))
+	if err := c.restorer.Restore(c.restoreLog, c.includeStatusHistory); err != nil {
+		restoreErr := snapshotter.Restore()
+		if restoreErr != nil {
+			logger.Errorf("unable to restore database snapshots: %s", restoreErr)
+		}
+		return errors.Trace(err)
+	}
+
+	c.ui.Notify("\nDatabase restore complete.\n")
+
+	if err := snapshotter.Discard(); err != nil {
+		// Don't fail the restore if we couldn't clean up the database
+		// snapshots for some reason.
+		c.ui.Notify(discardSnapshotsFailed)
+	} else {
+		c.ui.Notify("Database snapshots discarded.\n")
+	}
 	return nil
 }
 
 func (c *restoreCommand) runPostChecks() error {
-	c.ui.Notify("\nStarting Juju agents...\n")
+	c.ui.Notify("Starting Juju agents...\n")
 	if err := c.manipulateAgents(c.restorer.StartAgents); err != nil {
 		return errors.Trace(err)
 	}
