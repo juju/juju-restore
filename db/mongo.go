@@ -173,7 +173,7 @@ func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 const (
 	restoreBinary     = "mongorestore"
 	snapRestoreBinary = "juju-db.mongorestore"
-	homeSnapDir       = "$HOME/snap/juju-db/common"
+	homeSnapDir       = "snap/juju-db/common" // relative to $HOME
 )
 
 func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool) []string {
@@ -254,10 +254,14 @@ func (db *database) getRestoreBinary() (binary string, isSnap bool, err error) {
 }
 
 func (db *database) moveToHomeSnap(dumpDir string) (string, error) {
-	snapDumpDir := filepath.Join(os.ExpandEnv(homeSnapDir), dumpDir)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", errors.Trace(err)
+	}
+	snapDumpDir := filepath.Join(homeDir, homeSnapDir, dumpDir)
 	snapDumpParent, _ := filepath.Split(snapDumpDir)
 	logger.Debugf("creating snap dump parent %q", snapDumpParent)
-	err := os.MkdirAll(snapDumpParent, 0755)
+	err = os.MkdirAll(snapDumpParent, 0755)
 	if err != nil {
 		return "", errors.Annotate(err, "creating snap dump parent")
 	}
