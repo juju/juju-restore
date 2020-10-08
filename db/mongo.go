@@ -5,9 +5,11 @@ package db
 
 import (
 	"crypto/tls"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/juju/collections/set"
@@ -168,7 +170,11 @@ func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 	return result, nil
 }
 
-const restoreBinary = "mongorestore"
+const (
+	restoreBinary     = "mongorestore"
+	snapRestoreBinary = "juju-db.mongorestore"
+	homeSnapDir       = "snap/juju-db/common" // relative to $HOME
+)
 
 func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool) []string {
 	args := []string{
@@ -194,19 +200,77 @@ func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool)
 
 // RestoreFromDump uses mongorestore to load the dump from a backup.
 func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+	binary, isSnap, err := db.getRestoreBinary()
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	// Snap mongorestore can only access certain directories, so move the dump
+	// from /tmp to under $HOME/snap before running restore, and delete after.
+	if isSnap {
+		dumpDir, err = db.moveToHomeSnap(dumpDir)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		defer func() {
+			err := os.RemoveAll(dumpDir)
+			if err != nil {
+				logger.Warningf("error removing snap dump dir: %v", err)
+			}
+		}()
+	}
+
 	command := exec.Command(
-		restoreBinary,
+		binary,
 		db.buildRestoreArgs(dumpDir, includeStatusHistory)...,
 	)
-	logger.Debugf("running restore command: %s %s", command.Path, strings.Join(command.Args, " "))
-	dest, err := os.Create(logFile)
+	logger.Debugf("running restore command: %s", strings.Join(command.Args, " "))
+
+	// Use CombinedOutput and then write the bytes ourselves instead of
+	// passing a file for command.Stdout/Stderr -- this avoids a permissions
+	// issue with the Snap mongorestore writing to the file.
+	output, err := command.CombinedOutput()
 	if err != nil {
-		return errors.Annotatef(err, "opening logfile %q", logFile)
+		logger.Debugf("%s output:\n%s", binary, output)
+		return errors.Annotatef(err, "running %s", binary)
 	}
-	defer dest.Close()
-	command.Stdout = dest
-	command.Stderr = dest
-	return errors.Annotatef(command.Run(), "running %s", restoreBinary)
+	err = ioutil.WriteFile(logFile, output, 0664)
+	if err != nil {
+		logger.Debugf("%s output:\n%s", binary, output)
+		return errors.Annotatef(err, "writing output to %s", logFile)
+	}
+	return nil
+}
+
+func (db *database) getRestoreBinary() (binary string, isSnap bool, err error) {
+	if _, err := exec.LookPath(snapRestoreBinary); err == nil {
+		return snapRestoreBinary, true, nil
+	}
+	if _, err := exec.LookPath(restoreBinary); err == nil {
+		return restoreBinary, false, nil
+	}
+	return "", false, errors.Errorf("couldn't find %s or %s in PATH (%s)",
+		snapRestoreBinary, restoreBinary, os.Getenv("PATH"))
+}
+
+func (db *database) moveToHomeSnap(dumpDir string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", errors.Trace(err)
+	}
+	snapDumpDir := filepath.Join(homeDir, homeSnapDir, dumpDir)
+	snapDumpParent, _ := filepath.Split(snapDumpDir)
+	logger.Debugf("creating snap dump parent %q", snapDumpParent)
+	err = os.MkdirAll(snapDumpParent, 0755)
+	if err != nil {
+		return "", errors.Annotate(err, "creating snap dump parent")
+	}
+	logger.Debugf("moving %q to snap dump dir %q", dumpDir, snapDumpDir)
+	err = os.Rename(dumpDir, snapDumpDir)
+	if err != nil {
+		return "", errors.Annotate(err, "moving dump to snap dump dir")
+	}
+	return snapDumpDir, nil
 }
 
 // Close is part of core.Database.
