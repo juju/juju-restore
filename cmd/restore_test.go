@@ -224,6 +224,43 @@ Starting Juju agents...
 `[1:])
 }
 
+func (s *restoreSuite) TestRestoreProceedYes(c *gc.C) {
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
+	ctx, err := s.runCmd(c, "", "--yes", "backup.file")
+	c.Assert(err, jc.ErrorIsNil)
+
+	assertLastCallIsClose(c, s.database.Calls())
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
+
+Stopping Juju agents...
+ 
+    one-node ✓ 
+
+Running restore...
+Detailed mongorestore output in restore.log.
+
+Database restore complete.
+Starting Juju agents...
+ 
+    one-node ✓ 
+`[1:])
+}
+
 func (s *restoreSuite) setupHA() {
 	s.database.replicaSetF = func() (core.ReplicaSet, error) {
 		return core.ReplicaSet{
@@ -400,6 +437,51 @@ Database restore complete.
 Starting Juju agents...
  
     one:node ✓ 
+Primary node may have shifted.
+`[1:])
+}
+
+func (s *restoreSuite) TestRestoreHAYes(c *gc.C) {
+	s.setupHA()
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
+	ctx, err := s.runCmd(c, "", "--yes", "backup.file")
+	c.Assert(err, jc.ErrorIsNil)
+	assertLastCallIsClose(c, s.database.Calls())
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to restore this backup:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   how-bizarre
+    Juju version: 2.7.5
+    Models:       3
+
+
+Checking connectivity to secondary controller machines...
+ 
+    two:node ✓ 
+
+Stopping Juju agents...
+ 
+    one:node ✓  
+    two:node ✓ 
+
+Running restore...
+Detailed mongorestore output in restore.log.
+
+Database restore complete.
+Starting Juju agents...
+ 
+    one:node ✓  
+    two:node ✓ 
 Primary node may have shifted.
 `[1:])
 }
