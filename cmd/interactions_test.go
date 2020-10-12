@@ -4,6 +4,8 @@
 package cmd_test
 
 import (
+	"strings"
+
 	corecmd "github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
@@ -17,8 +19,7 @@ import (
 type InteractionsSuite struct {
 	testing.IsolationSuite
 
-	ctx      *corecmd.Context
-	readFunc func(ctx *corecmd.Context) (string, error)
+	ctx *corecmd.Context
 }
 
 var _ = gc.Suite(&InteractionsSuite{})
@@ -26,62 +27,65 @@ var _ = gc.Suite(&InteractionsSuite{})
 func (s *InteractionsSuite) SetUpTest(c *gc.C) {
 	s.IsolationSuite.SetUpTest(c)
 	s.ctx = cmdtesting.Context(c)
-	s.readFunc = func(*corecmd.Context) (string, error) { return "\r", nil }
+	s.ctx.Stdin = strings.NewReader("\n")
 }
 
 func (s *InteractionsSuite) TestUserConfirmEnter(c *gc.C) {
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
+	c.Assert(cmd.NewUserInteractions(s.ctx).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 }
 
+type kaboomReader struct{}
+
+func (r kaboomReader) Read(p []byte) (n int, err error) {
+	return 0, errors.Errorf("kaboom")
+}
+
 func (s *InteractionsSuite) TestUserConfirmFail(c *gc.C) {
-	s.readFunc = func(*corecmd.Context) (string, error) { return "", errors.New("kaboom") }
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), gc.ErrorMatches, "kaboom")
+	s.ctx.Stdin = kaboomReader{}
+	c.Assert(cmd.NewUserInteractions(s.ctx).UserConfirmYes(), gc.ErrorMatches, "kaboom")
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
 }
 
 func (s *InteractionsSuite) TestUserConfirmInvalid(c *gc.C) {
-	count := 1
-	s.readFunc = func(*corecmd.Context) (string, error) {
-		if count > 2 {
-			return "y", nil
-		}
-		count++
-		return "s", nil
-	}
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
+	s.ctx.Stdin = strings.NewReader("foo\nbar bazz\ny\n")
+	c.Assert(cmd.NewUserInteractions(s.ctx).UserConfirmYes(), jc.ErrorIsNil)
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
-	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, `Invalid answer "s". Please answer (y/N) or Enter to default to N: Invalid answer "s". Please answer (y/N) or Enter to default to N: `)
+	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, `Invalid response "foo". Please answer (y/N): Invalid response "bar bazz". Please answer (y/N): `)
 }
 
 func (s *InteractionsSuite) TestUserConfirmExplicitNo(c *gc.C) {
-	s.readFunc = func(*corecmd.Context) (string, error) { return "n", nil }
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
-	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
-	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
-
-	s.readFunc = func(*corecmd.Context) (string, error) { return "N", nil }
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
-	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
-	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+	for _, input := range []string{"n\n", "N\n", "no\n", "NO\n"} {
+		s.ctx.Stdin = strings.NewReader(input)
+		c.Assert(cmd.NewUserInteractions(s.ctx).UserConfirmYes(), jc.Satisfies, cmd.IsUserAbortedError)
+		c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
+		c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+	}
 }
 
 func (s *InteractionsSuite) TestUserConfirmExplicitYes(c *gc.C) {
-	s.readFunc = func(*corecmd.Context) (string, error) { return "y", nil }
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
-	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
-	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+	for _, input := range []string{"y\n", "Y\n", "yes\n", "YES\n"} {
+		s.ctx.Stdin = strings.NewReader(input)
+		c.Assert(cmd.NewUserInteractions(s.ctx).UserConfirmYes(), jc.ErrorIsNil)
+		c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
+		c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+	}
+}
 
-	s.readFunc = func(*corecmd.Context) (string, error) { return "Y", nil }
-	c.Assert(cmd.NewUserInteractions(s.ctx, s.readFunc).UserConfirmYes(), jc.ErrorIsNil)
-	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
-	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+func (s *InteractionsSuite) TestConfirmMultiple(c *gc.C) {
+	s.ctx.Stdin = strings.NewReader("y\ny\ny\n")
+	ui := cmd.NewUserInteractions(s.ctx)
+	for i := 0; i < 3; i++ {
+		c.Assert(ui.UserConfirmYes(), jc.ErrorIsNil)
+		c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
+		c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "")
+	}
 }
 
 func (s *InteractionsSuite) TestNotify(c *gc.C) {
-	cmd.NewUserInteractions(s.ctx, s.readFunc).Notify("must be fun to be on stdout")
+	cmd.NewUserInteractions(s.ctx).Notify("must be fun to be on stdout")
 	c.Assert(cmdtesting.Stderr(s.ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(s.ctx), gc.Equals, "must be fun to be on stdout")
 }

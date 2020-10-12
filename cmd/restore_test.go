@@ -6,6 +6,7 @@ package cmd_test
 import (
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 	"time"
 
 	corecmd "github.com/juju/cmd"
@@ -30,7 +31,6 @@ type restoreSuite struct {
 	connectF  func(db.DialInfo) (core.Database, error)
 	openF     func(string, string) (core.BackupFile, error)
 	converter func(member core.ReplicaSetMember) core.ControllerNode
-	readFunc  func(*corecmd.Context) (string, error)
 	loadCreds func() (string, string, error)
 	devMode   bool
 }
@@ -85,7 +85,6 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 	s.connectF = func(db.DialInfo) (core.Database, error) { return s.database, nil }
 	s.openF = func(string, string) (core.BackupFile, error) { return s.backup, nil }
 	s.converter = machine.ControllerNodeForReplicaSetMember
-	s.readFunc = func(*corecmd.Context) (string, error) { return "", nil }
 	s.loadCreds = func() (string, string, error) {
 		return "", "", errors.Errorf("loading those creds")
 	}
@@ -120,7 +119,6 @@ func (s *restoreSuite) TestArgParsing(c *gc.C) {
 		s.connectF,
 		s.openF,
 		s.converter,
-		s.readFunc,
 		s.loadCreds,
 		s.devMode,
 	)
@@ -189,7 +187,7 @@ func (s *restoreSuite) TestRestoreProceed(c *gc.C) {
 		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 		return node
 	}
-	ctx, err := s.runCmd(c, "y", "backup.file")
+	ctx, err := s.runCmd(c, "y\n", "backup.file")
 	c.Assert(err, jc.ErrorIsNil)
 
 	assertLastCallIsClose(c, s.database.Calls())
@@ -257,7 +255,7 @@ func (s *restoreSuite) TestRestoreHAConnectionFail(c *gc.C) {
 		node.SetErrors(errors.New("kaboom"))
 		return node
 	}
-	ctx, err := s.runCmd(c, "y\r\n", "backup.file")
+	ctx, err := s.runCmd(c, "y\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, `'juju-restore' could not connect to all controller machines: controllers' agents cannot be managed`)
 
 	assertLastCallIsClose(c, s.database.Calls())
@@ -292,7 +290,7 @@ func (s *restoreSuite) TestRestoreHAConnectionOk(c *gc.C) {
 	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
 		return &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 	}
-	ctx, err := s.runCmd(c, "y\r\n\n", "backup.file")
+	ctx, err := s.runCmd(c, "y\n\n", "backup.file")
 	c.Assert(err, gc.ErrorMatches, "restore operation: aborted")
 
 	assertLastCallIsClose(c, s.database.Calls())
@@ -365,7 +363,7 @@ func (s *restoreSuite) TestRestoreHAManualControlOption(c *gc.C) {
 		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
 		return node
 	}
-	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
+	ctx, err := s.runCmd(c, "y\ny\n", "backup.file", "--manual-agent-control")
 	c.Assert(err, jc.ErrorIsNil)
 	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
@@ -413,7 +411,7 @@ func (s *restoreSuite) TestRestoreAgentStopFail(c *gc.C) {
 		node.SetErrors(errors.New("kaboom"))
 		return node
 	}
-	ctx, err := s.runCmd(c, "y\r\ny\r\n", "backup.file", "--manual-agent-control")
+	ctx, err := s.runCmd(c, "y\ny\n", "backup.file", "--manual-agent-control")
 	c.Assert(err, gc.ErrorMatches, "'juju-restore' could not manipulate all necessary agents: controllers' agents cannot be managed")
 	assertLastCallIsClose(c, s.database.Calls())
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
@@ -451,7 +449,7 @@ func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
 		return node
 	}
 	s.devMode = true
-	ctx, err := s.runCmd(c, "y", "backup.file", "--rs")
+	ctx, err := s.runCmd(c, "y\n", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
 	assertLastCallIsClose(c, s.database.Calls())
@@ -472,7 +470,7 @@ func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
 		return node
 	}
 	s.devMode = true
-	ctx, err := s.runCmd(c, "yy", "backup.file", "--rs")
+	ctx, err := s.runCmd(c, "y\ny\n", "backup.file", "--rs")
 	c.Assert(err, jc.ErrorIsNil)
 
 	assertLastCallIsClose(c, s.database.Calls())
@@ -576,17 +574,13 @@ func (s *restoreSuite) runCmd(c *gc.C, input string, args ...string) (*corecmd.C
 }
 
 func (s *restoreSuite) runCmdNoUser(c *gc.C, input string, args ...string) (*corecmd.Context, error) {
-	count := -1
-	s.readFunc = func(*corecmd.Context) (string, error) {
-		count++
-		return string(input[count]), nil
-	}
-	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.readFunc, s.loadCreds, s.devMode)
+	command := cmd.NewRestoreCommand(s.connectF, s.openF, s.converter, s.loadCreds, s.devMode)
 	err := cmdtesting.InitCommand(command, args)
 	if err != nil {
 		return nil, err
 	}
 	ctx := cmdtesting.Context(c)
+	ctx.Stdin = strings.NewReader(input)
 	return ctx, command.Run(ctx)
 }
 
