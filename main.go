@@ -37,7 +37,6 @@ func Run(args []string) int {
 		db.Dial,
 		backup.Open,
 		machine.ControllerNodeForReplicaSetMember,
-		cmd.ReadOneChar,
 		cmd.ReadCredsFromAgentConf,
 		os.Getenv("JUJU_RESTORE_DEV_MODE") == "on",
 	)

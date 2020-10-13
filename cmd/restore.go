@@ -32,28 +32,25 @@ func NewRestoreCommand(
 	dbConnect func(info db.DialInfo) (core.Database, error),
 	openBackup func(path, tempRoot string) (core.BackupFile, error),
 	machineConverter func(member core.ReplicaSetMember) core.ControllerNode,
-	readFunc func(*cmd.Context) (string, error),
 	loadCreds func() (string, string, error),
 	devMode bool,
 ) cmd.Command {
 	return &restoreCommand{
-		connect:     dbConnect,
-		openBackup:  openBackup,
-		converter:   machineConverter,
-		readOneChar: readFunc,
-		loadCreds:   loadCreds,
-		devMode:     devMode,
+		connect:    dbConnect,
+		openBackup: openBackup,
+		converter:  machineConverter,
+		loadCreds:  loadCreds,
+		devMode:    devMode,
 	}
 }
 
 type restoreCommand struct {
 	cmd.CommandBase
 
-	connect     func(info db.DialInfo) (core.Database, error)
-	openBackup  func(path, tempRoot string) (core.BackupFile, error)
-	converter   func(member core.ReplicaSetMember) core.ControllerNode
-	readOneChar func(*cmd.Context) (string, error)
-	loadCreds   func() (string, string, error)
+	connect    func(info db.DialInfo) (core.Database, error)
+	openBackup func(path, tempRoot string) (core.BackupFile, error)
+	converter  func(member core.ReplicaSetMember) core.ControllerNode
+	loadCreds  func() (string, string, error)
 
 	allowDowngrade bool
 	devMode        bool
@@ -70,6 +67,7 @@ type restoreCommand struct {
 	tempRoot             string
 	restoreLog           string
 	includeStatusHistory bool
+	assumeYes            bool
 
 	// manualAgentControl determines if 'juju-restore' or the operator
 	// manages - stops and starts juju and mongo agents - on
@@ -112,6 +110,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "location to write mongorestore logging output")
 	f.BoolVar(&c.includeStatusHistory, "include-status-history", false, "restore status history for machines and units (can be large)")
 	f.BoolVar(&c.allowDowngrade, "allow-downgrade", false, "allow restoring a backup from an older Juju version")
+	f.BoolVar(&c.assumeYes, "yes", false, "answer 'yes' to confirmation prompts (non-interactive)")
 	if c.devMode {
 		f.BoolVar(&c.restart, "rs", false, "just restart agents that were stopped (JUJU_RESTORE_DEV_MODE)")
 	}
@@ -148,7 +147,7 @@ func (c *restoreCommand) Run(ctx *cmd.Context) error {
 		}
 	}
 
-	c.ui = NewUserInteractions(ctx, c.readOneChar)
+	c.ui = NewUserInteractions(ctx)
 	c.ui.Notify("Connecting to database...\n")
 	database, err := c.connect(db.DialInfo{
 		Hostname: c.hostname,
@@ -209,13 +208,16 @@ func (c *restoreCommand) runPreChecks() error {
 
 	if c.restorer.IsHA() {
 		if !c.manualAgentControl {
-			c.ui.Notify(releaseAgentsControl)
-			if err := c.ui.UserConfirmYes(); err != nil {
-				if !IsUserAbortedError(err) {
-					return errors.Annotate(err, "releasing controller over agents")
+			if !c.assumeYes {
+				c.ui.Notify(releaseAgentsControl)
+				if err := c.ui.UserConfirmYes(); err != nil {
+					if !IsUserAbortedError(err) {
+						return errors.Annotate(err, "releasing controller over agents")
+					}
+					c.manualAgentControl = true
 				}
-				c.manualAgentControl = true
 			}
+
 			if !c.manualAgentControl {
 				c.ui.Notify("\n\nChecking connectivity to secondary controller machines...\n")
 				connections := c.restorer.CheckSecondaryControllerNodes()
@@ -232,10 +234,14 @@ func (c *restoreCommand) runPreChecks() error {
 		}
 
 	}
-	c.ui.Notify(preChecksCompleted)
-	if err := c.ui.UserConfirmYes(); err != nil {
-		return errors.Annotate(err, "restore operation")
+
+	if !c.assumeYes {
+		c.ui.Notify(preChecksCompleted)
+		if err := c.ui.UserConfirmYes(); err != nil {
+			return errors.Annotate(err, "restore operation")
+		}
 	}
+
 	return nil
 }
 
