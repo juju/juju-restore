@@ -330,7 +330,7 @@ func (s *restorerSuite) TestStopAgentsWithSecondaries(c *gc.C) {
 	})
 	c.Assert(nodes, gc.HasLen, 2)
 	for _, n := range nodes {
-		n.CheckCallNames(c, "IP", "StopAgent")
+		n.CheckCallNames(c, "IP", "StopService")
 	}
 }
 
@@ -347,7 +347,7 @@ func (s *restorerSuite) TestStopAgentsNoSecondaries(c *gc.C) {
 	for _, n := range nodes {
 		// When no secondaries are requested, only primary node will be run
 		if n.IP() == "djula" {
-			n.CheckCallNames(c, "IP", "StopAgent", "IP")
+			n.CheckCallNames(c, "IP", "StopService", "IP")
 		} else {
 			n.CheckCallNames(c, "IP")
 		}
@@ -378,7 +378,7 @@ func (s *restorerSuite) TestStartAgentsWithSecondaries(c *gc.C) {
 	})
 	c.Assert(nodes, gc.HasLen, 2)
 	for _, n := range nodes {
-		n.CheckCallNames(c, "IP", "StartAgent")
+		n.CheckCallNames(c, "IP", "StartService")
 	}
 }
 
@@ -395,7 +395,7 @@ func (s *restorerSuite) TestStartAgentsNoSecondaries(c *gc.C) {
 	for _, n := range nodes {
 		// When no secondaries are requested, only primary node will be run
 		if n.IP() == "djula" {
-			n.CheckCallNames(c, "IP", "StartAgent", "IP")
+			n.CheckCallNames(c, "IP", "StartService", "IP")
 		} else {
 			n.CheckCallNames(c, "IP")
 		}
@@ -788,6 +788,11 @@ func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHi
 	return db.Stub.NextErr()
 }
 
+func (db *fakeDatabase) Reconnect() error {
+	db.Stub.MethodCall(db, "Reconnect")
+	return db.Stub.NextErr()
+}
+
 func (db *fakeDatabase) Close() {
 	db.Stub.MethodCall(db, "Close")
 }
@@ -806,18 +811,33 @@ func (f *fakeControllerNode) IP() string {
 	return f.ip
 }
 
-func (f *fakeControllerNode) Ping() error {
-	f.Stub.MethodCall(f, "Ping")
+func (f *fakeControllerNode) Status() (core.NodeStatus, error) {
+	f.Stub.MethodCall(f, "Status")
+	return core.NodeStatus{}, f.NextErr()
+}
+
+func (f *fakeControllerNode) StopService(stype core.ServiceType) error {
+	f.Stub.MethodCall(f, "StopService", stype)
 	return f.NextErr()
 }
 
-func (f *fakeControllerNode) StopAgent() error {
-	f.Stub.MethodCall(f, "StopAgent")
+func (f *fakeControllerNode) StartService(stype core.ServiceType) error {
+	f.Stub.MethodCall(f, "StartService", stype)
 	return f.NextErr()
 }
 
-func (f *fakeControllerNode) StartAgent() error {
-	f.Stub.MethodCall(f, "StartAgent")
+func (f *fakeControllerNode) SnapshotDatabase() (string, error) {
+	f.Stub.MethodCall(f, "SnapshotDatabase")
+	return "", f.NextErr()
+}
+
+func (f *fakeControllerNode) DiscardSnapshot(name string) error {
+	f.Stub.MethodCall(f, "DiscardSnapshot", name)
+	return f.NextErr()
+}
+
+func (f *fakeControllerNode) RestoreSnapshot(name string) error {
+	f.Stub.MethodCall(f, "RestoreSnapshot", name)
 	return f.NextErr()
 }
 

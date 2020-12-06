@@ -46,9 +46,51 @@ type Restorer struct {
 	convertToControllerNode ControllerNodeFactory
 }
 
+// WaitForReplicaSet determines whether this database is appropriate
+// for restoring into.
+func (r *Restorer) WaitForReplicaSet() error {
+	// keep a copy of replicaset, in case all exponential attempts fail.
+	pre := r.replicaSet
+
+	checkReplicaset := func() error {
+		return errors.Annotate(r.CheckDatabaseState(), "replicaset is sick")
+	}
+
+	attempt := retry.Start(
+		retry.LimitCount(10, retry.Exponential{
+			Initial: 1 * time.Second,
+			Factor:  1.6,
+		}),
+		clock.WallClock,
+	)
+
+	var err error
+	for attempt.Next() {
+		err = checkReplicaset()
+		if err == nil {
+			logger.Debugf("replicaset is healthy")
+			return nil
+		}
+		if attempt.More() {
+			logger.Debugf("replicaset is sick (retrying, attempt %v): %v", attempt.Count(), err)
+		}
+	}
+	if err != nil {
+		r.replicaSet = pre
+		return errors.Annotate(err, "timed out waiting for healthy replicaset")
+	}
+	return nil
+}
+
 // CheckDatabaseState determines whether this database is appropriate
 // for restoring into.
 func (r *Restorer) CheckDatabaseState() error {
+	// Re-get the replica set just in case it's changed.
+	replicaSet, err := r.db.ReplicaSet()
+	if err != nil {
+		return errors.Annotate(err, "getting database replica set")
+	}
+	r.replicaSet = replicaSet
 	logger.Debugf("replicaset status: %s", pretty.Sprint(r.replicaSet))
 	var primary *ReplicaSetMember
 	var unhealthyMembers []ReplicaSetMember
@@ -92,7 +134,8 @@ func (r *Restorer) CheckSecondaryControllerNodes() map[string]error {
 			continue
 		}
 		memberMachine := r.convertToControllerNode(member)
-		reachable[memberMachine.IP()] = memberMachine.Ping()
+		_, err := memberMachine.Status()
+		reachable[memberMachine.IP()] = err
 	}
 	return reachable
 }
@@ -105,8 +148,31 @@ func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
 	// When stopping agents we want to stop primary last in an attempt to
 	// avoid re-election now - we are stopping anyway.
 	return r.manageAgents(stopSecondaries, false, func(n ControllerNode) error {
-		return n.StopAgent()
+		return n.StopService(MachineAgentService)
 	})
+}
+
+// Snapshotter returns a snapshotter to manage taking database
+// snapshots on the nodes in the replicaset before we try to restore
+// the backup, and also reverting to the snapshots if something fails
+// in the restore.
+// TODO(babbageclunk): what if something fails reverting to the snapshot?
+func (r *Restorer) Snapshotter() (*Snapshotter, error) {
+	members := r.replicaSet.Members
+	var primary ControllerNode
+	var others []ControllerNode
+	for _, member := range members {
+		node := r.convertToControllerNode(member)
+		if member.State == statePrimary {
+			primary = node
+		} else {
+			others = append(others, node)
+		}
+	}
+	if primary == nil {
+		return nil, errors.Errorf("no primary member found in replica set")
+	}
+	return NewSnapshotter(r.db, primary, others), nil
 }
 
 // StartAgents starts controller agents, jujud-machine-*.
@@ -115,55 +181,12 @@ func (r *Restorer) StopAgents(stopSecondaries bool) map[string]error {
 // The agents on the primary node are always started first.
 func (r *Restorer) StartAgents(startSecondaries bool) map[string]error {
 	// Check replicaset is healthy before restarting agents.
-	r.replicaSetStabilised()
+	r.WaitForReplicaSet()
 	// When starting agents we want to start primary first in an attempt to
 	// preserve it being a primary.
 	return r.manageAgents(startSecondaries, true, func(n ControllerNode) error {
-		return n.StartAgent()
+		return n.StartService(MachineAgentService)
 	})
-}
-
-func (r *Restorer) replicaSetStabilised() {
-	// keep a copy of replicaset, in case all exponential attempts fail.
-	pre := r.replicaSet
-
-	checkReplicaset := func() error {
-		replicaSet, err := r.db.ReplicaSet()
-		if err != nil {
-			return errors.Annotate(err, "getting database replica set")
-		}
-		// We want to refresh replicaset as we go...
-		r.replicaSet = replicaSet
-		err = r.CheckDatabaseState()
-		if err != nil {
-			return errors.Annotate(err, "replicaset is sick")
-		}
-		return nil
-	}
-
-	attempt := retry.Start(
-		retry.LimitCount(20, retry.Exponential{
-			Initial: 5 * time.Second,
-			Factor:  1.6,
-		}),
-		clock.WallClock,
-	)
-
-	var err error
-	for attempt.Next() {
-		err = checkReplicaset()
-		if err == nil {
-			logger.Debugf("replicaset is healthy")
-			break
-		}
-		if attempt.More() {
-			logger.Debugf("replicaset is sick (retrying, attempt %v): %v", attempt.Count(), err)
-		}
-	}
-	if err != nil {
-		r.replicaSet = pre
-		logger.Errorf("Could not finish waiting for healthy replicaset")
-	}
 }
 
 func (r *Restorer) manageAgents(all bool, primaryFirst bool, operation func(n ControllerNode) error) map[string]error {

@@ -25,6 +25,10 @@ type Database interface {
 	// specified path.
 	RestoreFromDump(dumpDir string, logFile string, includeStatusHistory bool) error
 
+	// Reconnect reconnects to the database if the database agents
+	// have been restarted.
+	Reconnect() error
+
 	// Close terminates the database connection.
 	Close()
 }
@@ -90,23 +94,69 @@ func (m ReplicaSetMember) String() string {
 	return fmt.Sprintf("%d %q (juju machine %v)", m.ID, m.Name, m.JujuMachineID)
 }
 
+// ServiceType is used to pick which service to stop/start on a
+// controller node.
+type ServiceType string
+
+const (
+	// MachineAgentService is the jujud-machine-n service on the
+	// machine.
+	MachineAgentService ServiceType = "machine-agent"
+
+	// DatabaseService is the juju-db service on the machine.
+	DatabaseService ServiceType = "database"
+)
+
 // ControllerNode defines behavior for a controller node machine.
 type ControllerNode interface {
 	// IP returns IP address of the machine.
 	IP() string
 
-	// Ping checks connection to the controller machine.
-	Ping() error
+	// Status checks connection to the controller machine and returns
+	// some information about it.
+	Status() (NodeStatus, error)
 
-	// StopAgent stops jujud-machine-* service on the controller node.
-	StopAgent() error
+	// StopAgent stops the jujud-machine-* or juju-db service on the
+	// controller node.
+	StopService(ServiceType) error
 
-	// StartAgent starts jujud-machine-* service on the controller node.
-	StartAgent() error
+	// StartAgent starts the jujud-machine-* or juju-db service on the
+	// controller node.
+	StartService(ServiceType) error
+
+	// SnapshotDatabase copies the Mongo data directory to a temporary
+	// location (which is returned). Requires that juju-db isn't
+	// running.
+	SnapshotDatabase() (string, error)
+
+	// RestoreSnapshot replaces the Mongo data directory with the
+	// specified snapshot. Requires that juju-db isn't running.
+	RestoreSnapshot(string) error
+
+	// DiscardSnapshot deletes an unused snapshot from the machine.
+	DiscardSnapshot(string) error
 
 	// UpdateAgentVersion changes the tools symlink and agent.conf for
 	// this machine to match the specified version.
 	UpdateAgentVersion(version.Number) error
+}
+
+// NodeStatus holds information about a controller node.
+type NodeStatus struct {
+	// FreeSpace is the amount of free space (in bytes?) on the
+	// filesystem containing /var/lib/juju
+	FreeSpace int64
+
+	// DatabaseSize is the size (in bytes?) of the mongo db on disk.
+	DatabaseSize int64
+
+	// MachineAgentRunning is whether the machine agent jujud is
+	// running on the machine.
+	MachineAgentRunning bool
+
+	// DatabaseRunning is whether the juju-db service is running on
+	// the machine.
+	DatabaseRunning bool
 }
 
 // PrecheckResult contains the results of a pre-check run.

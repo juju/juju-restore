@@ -55,6 +55,12 @@ Juju agents on secondary controller machines must be stopped by this point.
 To stop the agents, login into each secondary controller and run:
     $ sudo systemctl stop jujud-machine-*
 `
+
+	discardSnapshotsFailed = `
+Failed discard database snapshots on some controller machines.
+To remove them manually, ssh to the controller and run:
+    $ sudo rm -r /var/lib/juju/db-snapshot-*
+`
 )
 
 func populate(aTemplate string, data interface{}) string {

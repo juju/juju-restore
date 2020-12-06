@@ -214,10 +214,12 @@ Stopping Juju agents...
  
     one-node ✓ 
 
+Snapshotting database...
 Running restore...
 Detailed mongorestore output in restore.log.
 
 Database restore complete.
+Database snapshots discarded.
 Starting Juju agents...
  
     one-node ✓ 
@@ -430,10 +432,12 @@ Stopping Juju agents...
  
     one:node ✓ 
 
+Snapshotting database...
 Running restore...
 Detailed mongorestore output in restore.log.
 
 Database restore complete.
+Database snapshots discarded.
 Starting Juju agents...
  
     one:node ✓ 
@@ -538,7 +542,6 @@ func (s *restoreSuite) TestRestoreStartAgents(c *gc.C) {
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
-
 Starting Juju agents...
  
     one-node ✓ 
@@ -559,7 +562,6 @@ func (s *restoreSuite) TestRestoreStartAgentsInHA(c *gc.C) {
 	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
 	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
 Connecting to database...
-
 Starting Juju agents...
  
     one:node ✓  
@@ -694,6 +696,11 @@ func (d *testDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHis
 	return d.Stub.NextErr()
 }
 
+func (d *testDatabase) Reconnect() error {
+	d.AddCall("Reconnect")
+	return d.Stub.NextErr()
+}
+
 func (d *testDatabase) Close() {
 	d.AddCall("Close")
 }
@@ -708,18 +715,33 @@ func (f *fakeControllerNode) IP() string {
 	return f.ip
 }
 
-func (f *fakeControllerNode) Ping() error {
-	f.Stub.MethodCall(f, "Ping")
+func (f *fakeControllerNode) Status() (core.NodeStatus, error) {
+	f.Stub.MethodCall(f, "Status")
+	return core.NodeStatus{}, f.NextErr()
+}
+
+func (f *fakeControllerNode) StopService(stype core.ServiceType) error {
+	f.Stub.MethodCall(f, "StopService", stype)
 	return f.NextErr()
 }
 
-func (f *fakeControllerNode) StopAgent() error {
-	f.Stub.MethodCall(f, "StopAgent")
+func (f *fakeControllerNode) StartService(stype core.ServiceType) error {
+	f.Stub.MethodCall(f, "StartService", stype)
 	return f.NextErr()
 }
 
-func (f *fakeControllerNode) StartAgent() error {
-	f.Stub.MethodCall(f, "StartAgent")
+func (f *fakeControllerNode) SnapshotDatabase() (string, error) {
+	f.Stub.MethodCall(f, "SnapshotDatabase")
+	return "", f.NextErr()
+}
+
+func (f *fakeControllerNode) DiscardSnapshot(name string) error {
+	f.Stub.MethodCall(f, "DiscardSnapshot", name)
+	return f.NextErr()
+}
+
+func (f *fakeControllerNode) RestoreSnapshot(name string) error {
+	f.Stub.MethodCall(f, "RestoreSnapshot", name)
 	return f.NextErr()
 }
 
