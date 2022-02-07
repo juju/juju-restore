@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-	"github.com/juju/version"
-	"gopkg.in/mgo.v2/bson"
+	"github.com/juju/mgo/v2/bson"
+	"github.com/juju/version/v2"
 
 	"github.com/juju/juju-restore/core"
 )

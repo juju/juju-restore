@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	corecmd "github.com/juju/cmd"
+	corecmd "github.com/juju/cmd/v3"
 	"github.com/juju/loggo"
 
 	"github.com/juju/juju-restore/backup"
