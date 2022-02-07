@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/juju/version"
+	"github.com/juju/version/v2"
 )
 
 // Database represents a connection to MongoDB and abstracts the

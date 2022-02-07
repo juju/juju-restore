@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	corecmd "github.com/juju/cmd"
-	"github.com/juju/cmd/cmdtesting"
+	corecmd "github.com/juju/cmd/v3"
+	"github.com/juju/cmd/v3/cmdtesting"
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
-	"github.com/juju/version"
+	"github.com/juju/version/v2"
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju-restore/cmd"

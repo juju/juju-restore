@@ -15,10 +15,10 @@ import (
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"github.com/juju/replicaset"
-	"github.com/juju/version"
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	"github.com/juju/mgo/v2"
+	"github.com/juju/mgo/v2/bson"
+	"github.com/juju/replicaset/v2"
+	"github.com/juju/version/v2"
 
 	"github.com/juju/juju-restore/core"
 )

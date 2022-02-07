@@ -14,7 +14,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"github.com/juju/utils/tar"
+	"github.com/juju/utils/v3/tar"
 
 	"github.com/juju/juju-restore/core"
 )

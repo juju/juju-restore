@@ -11,7 +11,7 @@ import (
 	"github.com/juju/clock"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"github.com/juju/version"
+	"github.com/juju/version/v2"
 	"github.com/kr/pretty"
 	"gopkg.in/retry.v1"
 )
