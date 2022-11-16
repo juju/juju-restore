@@ -20,10 +20,14 @@ type Database interface {
 	// can compare to the backup file.
 	ControllerInfo() (ControllerInfo, error)
 
+	// CopyController copies the core controller data from the backup
+	// file so that the target controller looks like the source controller.
+	CopyController(controller ControllerInfo) error
+
 	// RestoreFromDump restores the database dump in the directory
 	// passed in to the database and writes progress logging to the
 	// specified path.
-	RestoreFromDump(dumpDir string, logFile string, includeStatusHistory bool) error
+	RestoreFromDump(dumpDir string, logFile string, includeStatusHistory, copyController bool) error
 
 	// Close terminates the database connection.
 	Close()
@@ -45,6 +49,15 @@ type ControllerInfo struct {
 	// ControllerModelUUID is the controller model UUID for this controller.
 	ControllerModelUUID string
 
+	// ControllerUUID is the controller UUID for this controller.
+	ControllerUUID string
+
+	// ControllerModelCloud is the name of the controller model cloud.
+	ControllerModelCloud string
+
+	// ControllerModelCloudCredential is the name of the controller model cloud credential.
+	ControllerModelCloudCredential string
+
 	// JujuVersion is the version of Juju running on this controller.
 	JujuVersion version.Number
 
@@ -55,6 +68,9 @@ type ControllerInfo struct {
 
 	// HANodes is the count of controller machines.
 	HANodes int
+
+	// Models is the count of models.
+	Models int
 }
 
 // ReplicaSetMember holds status information about a database replica
@@ -118,6 +134,10 @@ type PrecheckResult struct {
 	// backup was taken.
 	ControllerModelUUID string
 
+	// ControllerUUID is the UUID of the controller from which
+	// backup was taken.
+	ControllerUUID string
+
 	// BackupJujuVersion is the Juju version of the controller from which backup was taken.
 	BackupJujuVersion version.Number
 
@@ -129,6 +149,9 @@ type PrecheckResult struct {
 
 	// ModelCount is the count of models that this backup contains.
 	ModelCount int
+
+	// CloudCount is the count of clouds that this backup contains.
+	CloudCount int
 }
 
 const (
@@ -163,6 +186,9 @@ type BackupMetadata struct {
 	// controller model.
 	ControllerModelUUID string
 
+	// ControllerUUID is the UUID of the backed up controller.
+	ControllerUUID string
+
 	// JujuVersion is the Juju version of the controller from which
 	// the backup was taken.
 	JujuVersion version.Number
@@ -185,6 +211,9 @@ type BackupMetadata struct {
 
 	// ModelCount reports how many models are contained in the backup.
 	ModelCount int
+
+	// CloudCount reports how many clouds are contained in the backup.
+	CloudCount int
 
 	// HANodes is the number of machines in the controller that was
 	// backed up.

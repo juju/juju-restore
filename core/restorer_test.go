@@ -443,7 +443,7 @@ func (s *restorerSuite) TestCheckRestorable(c *gc.C) {
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable(false)
+	result, err := r.CheckRestorable(false, false)
 	c.Assert(err, jc.ErrorIsNil)
 
 	c.Assert(result, gc.DeepEquals, &core.PrecheckResult{
@@ -484,7 +484,7 @@ func (s *restorerSuite) TestCheckRestorableAllowDowngrade(c *gc.C) {
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable(true)
+	result, err := r.CheckRestorable(true, false)
 	c.Assert(err, jc.ErrorIsNil)
 
 	c.Assert(result, gc.DeepEquals, &core.PrecheckResult{
@@ -526,7 +526,7 @@ func (s *restorerSuite) TestCheckRestorableWithAllowDowngradeButUpgrading(c *gc.
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable(true)
+	result, err := r.CheckRestorable(true, false)
 	c.Assert(err, gc.ErrorMatches, `backup juju version "2.8-beta5.3" is greater than controller version "2.7.6"`)
 	c.Assert(result, gc.IsNil)
 }
@@ -564,7 +564,7 @@ func (s *restorerSuite) checkRestorableMismatch(c *gc.C, expectErr string, tweak
 	}, nil)
 	c.Assert(err, jc.ErrorIsNil)
 
-	result, err := r.CheckRestorable(false)
+	result, err := r.CheckRestorable(false, false)
 	c.Assert(err, gc.ErrorMatches, expectErr)
 	c.Assert(result, gc.IsNil)
 }
@@ -597,6 +597,77 @@ func (s *restorerSuite) TestCheckRestorableMismatchSeries(c *gc.C) {
 	s.checkRestorableMismatch(c, `controller series don't match - backup: "eoan", controller: "zesty"`,
 		func(i *core.ControllerInfo) {
 			i.Series = "zesty"
+		},
+	)
+}
+
+func (s *restorerSuite) checkCopyControllerMismatch(c *gc.C, expectErr string, backupVers string, tweak func(*core.ControllerInfo)) {
+	created, err := time.Parse(time.RFC3339, "2020-03-17T12:24:30Z")
+	c.Assert(err, jc.ErrorIsNil)
+
+	controllerInfo := core.ControllerInfo{
+		ControllerModelUUID: "porridge radio",
+		JujuVersion:         version.MustParse("3.0.0"),
+		HANodes:             5,
+	}
+	tweak(&controllerInfo)
+
+	r, err := core.NewRestorer(&fakeDatabase{
+		replicaSetF: func() (core.ReplicaSet, error) {
+			return core.ReplicaSet{}, nil
+		},
+		controllerInfoF: func() (core.ControllerInfo, error) {
+			return controllerInfo, nil
+		},
+	}, &fakeBackup{
+		metadataF: func() (core.BackupMetadata, error) {
+			return core.BackupMetadata{
+				ControllerModelUUID: "porridge radio",
+				JujuVersion:         version.MustParse(backupVers),
+				BackupCreated:       created,
+				ModelCount:          3,
+			}, nil
+		},
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+
+	result, err := r.CheckRestorable(false, true)
+	c.Assert(err, gc.ErrorMatches, expectErr)
+	c.Assert(result, gc.IsNil)
+}
+
+func (s *restorerSuite) TestCheckCopyControllerMismatchHostedModels(c *gc.C) {
+	s.checkCopyControllerMismatch(c, `cannot copy controller when target controller hosts 1 workload model\(s\)`,
+		"2.9.37", func(i *core.ControllerInfo) {
+			i.JujuVersion = version.MustParse("3.0.0")
+			i.Models = 2
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckCopyControllerMismatchIncompatibleBackup(c *gc.C) {
+	s.checkCopyControllerMismatch(c, `when copying a controller, backup version must not be older than one major version less`,
+		"2.9.37", func(i *core.ControllerInfo) {
+			i.JujuVersion = version.MustParse("4.0.0")
+			i.Models = 1
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckCopyControllerMismatchOldController(c *gc.C) {
+	s.checkCopyControllerMismatch(c, `when copying a controller, backup version "2.9.37" must be less than or equal to target controller "2.9.36"`,
+		"2.9.37", func(i *core.ControllerInfo) {
+			i.JujuVersion = version.MustParse("2.9.36")
+			i.Models = 1
+		},
+	)
+}
+
+func (s *restorerSuite) TestCheckCopyControllerMismatchOldBackup(c *gc.C) {
+	s.checkCopyControllerMismatch(c, `when copying a controller, backup version must be at least 2.9.37`,
+		"2.9.36", func(i *core.ControllerInfo) {
+			i.JujuVersion = version.MustParse("3.0.0")
+			i.Models = 1
 		},
 	)
 }
@@ -639,11 +710,11 @@ func (s *restorerSuite) TestRestoreSameVersion(c *gc.C) {
 	)
 	c.Assert(err, jc.ErrorIsNil)
 	db.SetErrors(errors.Errorf("bad!"))
-	err = r.Restore("log path", true)
+	err = r.Restore("log path", true, false)
 	c.Assert(err, gc.ErrorMatches, `restoring dump from "the dump dir!": bad!`)
 
 	c.Assert(db.Calls(), gc.HasLen, 3)
-	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true)
+	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true, false)
 }
 
 func (s *restorerSuite) TestRestoreDowngrade(c *gc.C) {
@@ -695,11 +766,11 @@ func (s *restorerSuite) TestRestoreDowngrade(c *gc.C) {
 		convertToMachine,
 	)
 	c.Assert(err, jc.ErrorIsNil)
-	err = r.Restore("log path", true)
+	err = r.Restore("log path", true, false)
 	c.Assert(err, jc.ErrorIsNil)
 
 	c.Assert(db.Calls(), gc.HasLen, 3)
-	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true)
+	db.CheckCall(c, 2, "RestoreFromDump", "the dump dir!", "log path", true, false)
 
 	for i, machine := range machines {
 		c.Logf("machine %d", i)
@@ -761,7 +832,7 @@ func (s *restorerSuite) TestRestoreDowngradeError(c *gc.C) {
 	machines[0].SetErrors(errors.New("stuff went bad"))
 	machines[1].SetErrors(errors.New("oopsy daisy"))
 
-	err = r.Restore("log path", true)
+	err = r.Restore("log path", true, false)
 	c.Assert(err, gc.ErrorMatches, `
 problems updating controllers to version "2.7.6": updating node 1.1.1.1: stuff went bad
 updating node 1.1.1.2: oopsy daisy`[1:])
@@ -783,8 +854,13 @@ func (db *fakeDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	return db.controllerInfoF()
 }
 
-func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
-	db.Stub.MethodCall(db, "RestoreFromDump", dumpDir, logFile, includeStatusHistory)
+func (d *fakeDatabase) CopyController(controller core.ControllerInfo) error {
+	d.AddCall("CopyController", controller)
+	return nil
+}
+
+func (db *fakeDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory, copyController bool) error {
+	db.Stub.MethodCall(db, "RestoreFromDump", dumpDir, logFile, includeStatusHistory, copyController)
 	return db.Stub.NextErr()
 }
 

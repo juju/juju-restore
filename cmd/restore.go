@@ -67,6 +67,7 @@ type restoreCommand struct {
 	tempRoot             string
 	restoreLog           string
 	includeStatusHistory bool
+	copyController       bool
 	assumeYes            bool
 
 	// manualAgentControl determines if 'juju-restore' or the operator
@@ -109,6 +110,7 @@ func (c *restoreCommand) SetFlags(f *gnuflag.FlagSet) {
 	f.StringVar(&c.tempRoot, "temp-root", "/tmp", "location to unpack backup file")
 	f.StringVar(&c.restoreLog, "restore-log", "restore.log", "location to write mongorestore logging output")
 	f.BoolVar(&c.includeStatusHistory, "include-status-history", false, "restore status history for machines and units (can be large)")
+	f.BoolVar(&c.copyController, "copy-controller", false, "set up the target controller to mirror the controller from the backup")
 	f.BoolVar(&c.allowDowngrade, "allow-downgrade", false, "allow restoring a backup from an older Juju version")
 	f.BoolVar(&c.assumeYes, "yes", false, "answer 'yes' to confirmation prompts (non-interactive)")
 	if c.devMode {
@@ -127,6 +129,14 @@ func (c *restoreCommand) Init(args []string) error {
 	}
 	if c.verbose {
 		c.loggingConfig = verboseLogConfig
+	}
+	if c.copyController {
+		if c.includeStatusHistory {
+			return errors.New("--include-status-history incompatible with --copy-controller")
+		}
+		if c.allowDowngrade {
+			return errors.New("--allow-downgrade incompatible with --copy-controller")
+		}
 	}
 	return c.CommandBase.Init(args)
 }
@@ -199,12 +209,16 @@ func (c *restoreCommand) runPreChecks() error {
 	}
 	c.ui.Notify(dbHealthComplete)
 
-	precheckResult, err := c.restorer.CheckRestorable(c.allowDowngrade)
+	precheckResult, err := c.restorer.CheckRestorable(c.allowDowngrade, c.copyController)
 	if err != nil {
 		return errors.Annotate(err, "precheck")
 	}
 
-	c.ui.Notify(populate(backupFileTemplate, precheckResult))
+	if c.copyController {
+		c.ui.Notify(populate(backupFileControllerTemplate, precheckResult))
+	} else {
+		c.ui.Notify(populate(backupFileTemplate, precheckResult))
+	}
 
 	if c.restorer.IsHA() {
 		if !c.manualAgentControl {
@@ -253,7 +267,7 @@ func (c *restoreCommand) restore() error {
 	}
 	c.ui.Notify("\nRunning restore...\n")
 	c.ui.Notify(fmt.Sprintf("Detailed mongorestore output in %s.\n", c.restoreLog))
-	if err := c.restorer.Restore(c.restoreLog, c.includeStatusHistory); err != nil {
+	if err := c.restorer.Restore(c.restoreLog, c.includeStatusHistory, c.copyController); err != nil {
 		return errors.Trace(err)
 	}
 
