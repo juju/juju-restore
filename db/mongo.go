@@ -108,19 +108,36 @@ func (db *database) ReplicaSet() (core.ReplicaSet, error) {
 const jobManageModel = 2
 const alive = 0
 
+const (
+	jujuDBName           = "juju"
+	jujuControllerDBName = "jujucontroller"
+)
+
 // ControllerInfo is part of core.Database.
 func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 	var result core.ControllerInfo
 
-	jujuDB := db.session.DB("juju")
-	var modelDoc struct {
-		ID string `bson:"_id"`
+	jujuDB := db.session.DB(jujuDBName)
+	num, err := jujuDB.C("models").Find(nil).Count()
+	if err != nil {
+		return core.ControllerInfo{}, errors.Annotate(err, "getting model count")
 	}
-	err := jujuDB.C("models").Find(bson.M{"name": "controller"}).One(&modelDoc)
+	result.Models = num
+
+	var modelDoc struct {
+		ID              string `bson:"_id"`
+		ControllerUUID  string `bson:"controller-uuid"`
+		Cloud           string `bson:"cloud"`
+		CloudCredential string `bson:"cloud-credential"`
+	}
+	err = jujuDB.C("models").Find(bson.M{"name": "controller"}).One(&modelDoc)
 	if err != nil {
 		return core.ControllerInfo{}, errors.Annotate(err, "getting controller model")
 	}
 	result.ControllerModelUUID = modelDoc.ID
+	result.ControllerUUID = modelDoc.ControllerUUID
+	result.ControllerModelCloud = modelDoc.Cloud
+	result.ControllerModelCloudCredential = strings.Replace(modelDoc.CloudCredential, "/", "#", -1)
 
 	var settingsDoc struct {
 		Settings map[string]interface{} `bson:"settings"`
@@ -170,6 +187,216 @@ func (db *database) ControllerInfo() (core.ControllerInfo, error) {
 	return result, nil
 }
 
+// settingsDoc is the mongo document representation for settings.
+type settingsDoc struct {
+	DocID     string      `bson:"_id"`
+	ModelUUID string      `bson:"model-uuid"`
+	Settings  settingsMap `bson:"settings"`
+}
+
+type settingsMap map[string]interface{}
+
+func (m *settingsMap) SetBSON(raw bson.Raw) error {
+	rawMap := make(map[string]interface{})
+	if err := raw.Unmarshal(rawMap); err != nil {
+		return err
+	}
+	*m = UnescapeKeys(rawMap)
+	return nil
+}
+
+func (m settingsMap) GetBSON() (interface{}, error) {
+	escapedMap := EscapeKeys(m)
+	return escapedMap, nil
+}
+
+func (db *database) copyCollection(collName, skipID string) error {
+	jujuControllerDB := db.session.DB(jujuControllerDBName)
+
+	var data []bson.M
+	sourceColl := jujuControllerDB.C(collName)
+	err := sourceColl.Find(nil).All(&data)
+	if err != nil {
+		return errors.Annotatef(err, "reading source %s", collName)
+	}
+
+	jujuDB := db.session.DB(jujuDBName)
+	col := jujuDB.C(collName)
+	bulk := col.Bulk()
+	for _, u := range data {
+		if u["_id"] == skipID {
+			continue
+		}
+		bulk.Upsert(bson.M{"_id": u["_id"]}, bson.M{"$set": u})
+	}
+	_, err = bulk.Run()
+	if err != nil {
+		return errors.Annotatef(err, "writing target %s", collName)
+	}
+	return nil
+}
+
+func (db *database) copyPermissions(controller core.ControllerInfo) error {
+	jujuControllerDB := db.session.DB(jujuControllerDBName)
+
+	var data []bson.M
+	sourceUsers := jujuControllerDB.C("permissions")
+	err := sourceUsers.Find(nil).All(&data)
+	if err != nil {
+		return errors.Annotatef(err, "reading source permissions")
+	}
+
+	jujuDB := db.session.DB(jujuDBName)
+	col := jujuDB.C("permissions")
+	bulk := col.Bulk()
+	for _, u := range data {
+		id, ok := u["_id"].(string)
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(id, "ao#") {
+			// We don't currently copy cross model artefacts.
+			continue
+		}
+		if strings.HasPrefix(id, "cloud#") {
+			bulk.Upsert(bson.M{"_id": u["_id"]}, bson.M{"$set": u})
+			continue
+		}
+		if strings.HasPrefix(id, "c#") {
+			if strings.HasSuffix(id, "#admin") {
+				continue
+			}
+			object_key, ok := u["object-global-key"].(string)
+			if !ok {
+				continue
+			}
+			u["_id"] = strings.Replace(id, object_key, "c#"+controller.ControllerUUID, 1)
+			u["object-global-key"] = "c#" + controller.ControllerUUID
+			bulk.Upsert(bson.M{"_id": u["_id"]}, bson.M{"$set": u})
+			bulk.Remove(bson.M{"_id": id})
+		}
+		if strings.HasPrefix(id, "e#") {
+			if strings.HasSuffix(id, "#admin") {
+				continue
+			}
+			object_key, ok := u["object-global-key"].(string)
+			if !ok {
+				continue
+			}
+			u["_id"] = strings.Replace(id, object_key, "e#"+controller.ControllerModelUUID, 1)
+			u["object-global-key"] = "e#" + controller.ControllerModelUUID
+			bulk.Upsert(bson.M{"_id": u["_id"]}, bson.M{"$set": u})
+			bulk.Remove(bson.M{"_id": id})
+		}
+	}
+	_, err = bulk.Run()
+	if err != nil {
+		return errors.Annotate(err, "writing permissions")
+	}
+	return nil
+}
+
+var controllerReadOnlyAttributes = set.NewStrings(
+	"api-port",
+	"ReadOnlyMethods",
+	"state-port",
+	"ca-cert",
+	"charmstore-url",
+	"controller-uuid",
+	"identity-url",
+	"identity-public-key",
+	"set-numa-control-policy",
+	"autocert-dns-name",
+	"autocert-url",
+	"allow-model-access",
+	"juju-db-snap-channel",
+	"max-txn-log-size",
+	"caas-image-repo",
+	"metering-url",
+	"controller-api-port",
+	"controller-name",
+)
+
+func (db *database) copySettings() error {
+	const (
+		controllers        = "controllers"
+		controllerSettings = "controllerSettings"
+	)
+	var source settingsDoc
+	jujuControllerDB := db.session.DB(jujuControllerDBName)
+	sourceSettings := jujuControllerDB.C(controllers)
+	err := sourceSettings.FindId(controllerSettings).One(&source)
+	if err != nil {
+		return errors.Annotate(err, "reading source settings")
+	}
+
+	var target settingsDoc
+	jujuDB := db.session.DB(jujuDBName)
+	targetSettings := jujuDB.C(controllers)
+	err = targetSettings.FindId(controllerSettings).One(&target)
+	if err != nil {
+		return errors.Annotate(err, "reading target settings")
+	}
+	for attr, v := range source.Settings {
+		// Retain controller name and ca-cert.
+		if controllerReadOnlyAttributes.Contains(attr) {
+			continue
+		}
+		target.Settings[attr] = v
+	}
+
+	err = targetSettings.UpdateId(controllerSettings, target)
+	if err != nil {
+		return errors.Annotate(err, "writing settings")
+	}
+	return nil
+}
+
+func (db *database) CopyController(controller core.ControllerInfo) error {
+	logger.Debugf("copying controller data")
+
+	err := db.copySettings()
+	if err != nil {
+		return errors.Annotate(err, "copying target settings")
+	}
+
+	err = db.copyCollection("users", "admin")
+	if err != nil {
+		return errors.Annotate(err, "updating target users")
+	}
+	err = db.copyCollection("controllerusers", "admin")
+	if err != nil {
+		return errors.Annotate(err, "copying target global users")
+	}
+	err = db.copyCollection("clouds", controller.ControllerModelCloud)
+	if err != nil {
+		return errors.Annotate(err, "copying target clouds")
+	}
+	err = db.copyCollection("cloudCredentials", controller.ControllerModelCloudCredential)
+	if err != nil {
+		return errors.Annotate(err, "copying target cloud credentials")
+	}
+	err = db.copyCollection("globalSettings", "")
+	if err != nil {
+		return errors.Annotate(err, "copying target cloud settings")
+	}
+	err = db.copyCollection("externalControllers", "")
+	if err != nil {
+		return errors.Annotate(err, "copying target external controllers")
+	}
+	err = db.copyPermissions(controller)
+	if err != nil {
+		return errors.Annotate(err, "copying target permissions")
+	}
+
+	logger.Debugf("controller data copied, dropping staging database")
+	err = db.session.DB(jujuControllerDBName).DropDatabase()
+	if err != nil {
+		return errors.Annotate(err, "dropping staging controller database")
+	}
+	return nil
+}
+
 const (
 	restoreBinary     = "mongorestore"
 	snapRestoreBinary = "juju-db.mongorestore"
@@ -198,8 +425,36 @@ func (db *database) buildRestoreArgs(dumpPath string, includeStatusHistory bool)
 	return append(args, dumpPath)
 }
 
+func (db *database) buildControllerRestoreArgs(dumpPath string) []string {
+	args := []string{
+		"-vvvvv",
+		"--drop",
+		"--writeConcern=majority",
+		"--host", db.info.Hostname,
+		"--port", db.info.Port,
+		"--authenticationDatabase=admin",
+		"--username", db.info.Username,
+		"--password", db.info.Password,
+		"--ssl",
+		"--sslAllowInvalidCertificates",
+		"--stopOnError",
+		"--maintainInsertionOrder",
+		"--nsFrom=juju.*",
+		"--nsTo=jujucontroller.*",
+		"--nsInclude=juju.controllers",
+		"--nsInclude=juju.users",
+		"--nsInclude=juju.controllerusers",
+		"--nsInclude=juju.clouds",
+		"--nsInclude=juju.cloudCredentials",
+		"--nsInclude=juju.globalSettings",
+		"--nsInclude=juju.permissions",
+		"--nsInclude=juju.externalControllers",
+	}
+	return append(args, dumpPath)
+}
+
 // RestoreFromDump uses mongorestore to load the dump from a backup.
-func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistory, copyController bool) error {
 	binary, isSnap, err := db.getRestoreBinary()
 	if err != nil {
 		return errors.Trace(err)
@@ -224,6 +479,14 @@ func (db *database) RestoreFromDump(dumpDir, logFile string, includeStatusHistor
 		binary,
 		db.buildRestoreArgs(dumpDir, includeStatusHistory)...,
 	)
+	// If we are copying a controller, we restore a subset of the collections
+	// to a staging database and later copy the relevant data.
+	if copyController {
+		command = exec.Command(
+			binary,
+			db.buildControllerRestoreArgs(dumpDir)...,
+		)
+	}
 	logger.Debugf("running restore command: %s", strings.Join(command.Args, " "))
 
 	// Use CombinedOutput and then write the bytes ourselves instead of

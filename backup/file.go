@@ -28,6 +28,7 @@ const (
 	dumpDir             = "juju-backup/dump"
 	logsDir             = "juju-backup/dump/logs"
 	modelsFile          = "juju-backup/dump/juju/models.bson"
+	cloudsFile          = "juju-backup/dump/juju/clouds.bson"
 	machinesFile        = "juju-backup/dump/juju/machines.bson"
 	controllerNodesFile = "juju-backup/dump/juju/controllerNodes.bson"
 )
@@ -85,6 +86,10 @@ func (b *expandedBackup) Metadata() (core.BackupMetadata, error) {
 	if err != nil {
 		return core.BackupMetadata{}, errors.Annotate(err, "counting models")
 	}
+	result.CloudCount, err = b.countClouds()
+	if err != nil {
+		return core.BackupMetadata{}, errors.Annotate(err, "counting clouds")
+	}
 	return result, nil
 }
 
@@ -101,6 +106,10 @@ func (b *expandedBackup) containsLogs() (bool, error) {
 
 func (b *expandedBackup) countModels() (int, error) {
 	return countBsonDocs(filepath.Join(b.dir, modelsFile))
+}
+
+func (b *expandedBackup) countClouds() (int, error) {
+	return countBsonDocs(filepath.Join(b.dir, cloudsFile))
 }
 
 // DumpDirectory returns the path of the contained database dump.

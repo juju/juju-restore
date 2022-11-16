@@ -94,6 +94,7 @@ type flatMetadata struct {
 func flatToBackupMetadata(source flatMetadata) core.BackupMetadata {
 	return core.BackupMetadata{
 		FormatVersion:       source.FormatVersion,
+		ControllerUUID:      source.ControllerUUID,
 		ControllerModelUUID: source.ModelUUID,
 		JujuVersion:         source.Version,
 		Series:              source.Series,
@@ -131,6 +132,7 @@ type flatMetadataV0 struct {
 func flatV0ToBackupMetadata(source flatMetadataV0, haNodes int) core.BackupMetadata {
 	return core.BackupMetadata{
 		FormatVersion:       0,
+		ControllerUUID:      "<unspecified>",
 		ControllerModelUUID: source.Environment,
 		JujuVersion:         source.Version,
 		Series:              source.Series,

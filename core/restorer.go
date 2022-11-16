@@ -194,7 +194,7 @@ func (r *Restorer) manageAgents(all bool, primaryFirst bool, operation func(n Co
 
 // CheckRestorable checks whether the backup file can be restored into
 // the target database.
-func (r *Restorer) CheckRestorable(allowDowngrade bool) (*PrecheckResult, error) {
+func (r *Restorer) CheckRestorable(allowDowngrade, copyController bool) (*PrecheckResult, error) {
 	backup, err := r.backup.Metadata()
 	if err != nil {
 		return nil, errors.Annotate(err, "getting backup metadata")
@@ -219,30 +219,45 @@ func (r *Restorer) CheckRestorable(allowDowngrade bool) (*PrecheckResult, error)
 			)
 
 		}
-	} else if backupVersion.Compare(controllerVersion) == -1 {
-		return nil, errors.Errorf("restoring backup would downgrade from juju %q to %q - pass --allow-downgrade if this is intended", controllerVersion, backupVersion)
-	} else if controllerVersion != backupVersion {
-		return nil, errors.Errorf("juju versions don't match - backup: %q, controller: %q",
-			backup.JujuVersion,
-			controller.JujuVersion,
-		)
+	} else {
+		if copyController {
+			if backupVersion.Compare(controllerVersion) == 1 {
+				return nil, errors.Errorf("when copying a controller, backup version %q must be less than or equal to target controller %q", backupVersion, controllerVersion)
+			}
+			if backupVersion.Compare(version.MustParse("2.9.37")) == -1 {
+				return nil, errors.New("when copying a controller, backup version must be at least 2.9.37")
+			}
+			if controllerVersion.Major > backupVersion.Major+1 {
+				return nil, errors.New("when copying a controller, backup version must not be older than one major version less")
+			}
+		} else if backupVersion.Compare(controllerVersion) == -1 {
+			return nil, errors.Errorf("restoring backup would downgrade from juju %q to %q - pass --allow-downgrade if this is intended", controllerVersion, backupVersion)
+		} else if controllerVersion != backupVersion {
+			return nil, errors.Errorf("juju versions don't match - backup: %q, controller: %q",
+				backup.JujuVersion,
+				controller.JujuVersion,
+			)
+		}
 	}
 
-	if backup.ControllerModelUUID != controller.ControllerModelUUID {
+	if !copyController && backup.ControllerModelUUID != controller.ControllerModelUUID {
 		return nil, errors.Errorf("controller model uuids don't match - backup: %q, controller: %q",
 			backup.ControllerModelUUID,
 			controller.ControllerModelUUID,
 		)
 	}
+	if copyController && controller.Models > 1 {
+		return nil, errors.Errorf("cannot copy controller when target controller hosts %d workload model(s)", controller.Models-1)
+	}
 
-	if backup.HANodes != controller.HANodes {
+	if !copyController && backup.HANodes != controller.HANodes {
 		return nil, errors.Errorf("controller HA node counts don't match - backup: %d, controller: %d",
 			backup.HANodes,
 			controller.HANodes,
 		)
 	}
 
-	if backup.Series != controller.Series {
+	if !copyController && backup.Series != controller.Series {
 		return nil, errors.Errorf("controller series don't match - backup: %q, controller: %q",
 			backup.Series,
 			controller.Series,
@@ -251,16 +266,18 @@ func (r *Restorer) CheckRestorable(allowDowngrade bool) (*PrecheckResult, error)
 
 	return &PrecheckResult{
 		BackupDate:            backup.BackupCreated,
+		ControllerUUID:        backup.ControllerUUID,
 		ControllerModelUUID:   backup.ControllerModelUUID,
 		BackupJujuVersion:     backup.JujuVersion,
 		ControllerJujuVersion: controller.JujuVersion,
 		ModelCount:            backup.ModelCount,
+		CloudCount:            backup.CloudCount,
 	}, nil
 }
 
 // Restore replaces the database's contents with the data from the
 // backup's database dump.
-func (r *Restorer) Restore(logPath string, includeStatusHistory bool) error {
+func (r *Restorer) Restore(logPath string, includeStatusHistory, copyController bool) error {
 	controller, err := r.db.ControllerInfo()
 	if err != nil {
 		return errors.Annotate(err, "getting controller info")
@@ -270,10 +287,18 @@ func (r *Restorer) Restore(logPath string, includeStatusHistory bool) error {
 		return errors.Annotatef(err, "getting backup metadata")
 	}
 	logger.Debugf("restoring dump")
-	err = r.db.RestoreFromDump(r.backup.DumpDirectory(), logPath, includeStatusHistory)
+	err = r.db.RestoreFromDump(r.backup.DumpDirectory(), logPath, includeStatusHistory, copyController)
 	if err != nil {
 		return errors.Annotatef(err, "restoring dump from %q", r.backup.DumpDirectory())
 	}
+
+	if copyController {
+		if err := r.db.CopyController(controller); err != nil {
+			return errors.Annotate(err, "problems copying source controller info")
+		}
+		return nil
+	}
+
 	if controller.JujuVersion != metadata.JujuVersion {
 		logger.Debugf("updating controller agent versions to %s", metadata.JujuVersion)
 		results := r.manageAgents(true, true, func(n ControllerNode) error {
@@ -302,10 +327,4 @@ func collectMachineErrors(results map[string]error) error {
 	// Ensure they're reported in a consistent order.
 	sort.Strings(messages)
 	return errors.Errorf(strings.Join(messages, "\n"))
-}
-
-func versionsMatchExcludingBuild(a, b version.Number) bool {
-	a.Build = 0
-	b.Build = 0
-	return a == b
 }

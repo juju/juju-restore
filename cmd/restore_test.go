@@ -56,7 +56,7 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 		controllerInfoF: func() (core.ControllerInfo, error) {
 			return core.ControllerInfo{
 				ControllerModelUUID: "how-bizarre",
-				JujuVersion:         version.MustParse("2.7.5.2"),
+				JujuVersion:         version.MustParse("2.9.37.2"),
 				Series:              "disco",
 				HANodes:             1,
 			}, nil
@@ -68,14 +68,16 @@ func (s *restoreSuite) SetUpTest(c *gc.C) {
 		metadataF: func() (core.BackupMetadata, error) {
 			return core.BackupMetadata{
 				FormatVersion:       1,
+				ControllerUUID:      "dawkins-rules",
 				ControllerModelUUID: "how-bizarre",
-				JujuVersion:         version.MustParse("2.7.5"),
+				JujuVersion:         version.MustParse("2.9.37"),
 				Series:              "disco",
 				BackupCreated:       created,
 				Hostname:            "juju-123456-0",
 				ContainsLogs:        true,
 				ModelCount:          3,
 				HANodes:             1,
+				CloudCount:          666,
 			}, nil
 		},
 		dumpDirF: func() string {
@@ -149,7 +151,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 All restore pre-checks are completed.
@@ -163,7 +165,7 @@ func (s *restoreSuite) TestPrecheckFailed(c *gc.C) {
 	s.database.controllerInfoF = func() (core.ControllerInfo, error) {
 		return core.ControllerInfo{
 			ControllerModelUUID: "how-bizarre",
-			JujuVersion:         version.MustParse("2.7.5"),
+			JujuVersion:         version.MustParse("2.9.37"),
 			HANodes:             1,
 			Series:              "focal",
 		}, nil
@@ -202,8 +204,50 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
+
+All restore pre-checks are completed.
+
+Restore cannot be cleanly aborted from here on.
+
+Are you sure you want to proceed? (y/N): 
+Stopping Juju agents...
+ 
+    one-node ✓ 
+
+Running restore...
+Detailed mongorestore output in restore.log.
+
+Database restore complete.
+Starting Juju agents...
+ 
+    one-node ✓ 
+`[1:])
+}
+
+func (s *restoreSuite) TestRestoreCopyController(c *gc.C) {
+	s.converter = func(member core.ReplicaSetMember) core.ControllerNode {
+		node := &fakeControllerNode{Stub: &testing.Stub{}, ip: member.Name}
+		return node
+	}
+	ctx, err := s.runCmd(c, "y\n", "backup.file", "--copy-controller")
+	c.Assert(err, jc.ErrorIsNil)
+
+	assertLastCallIsClose(c, s.database.Calls())
+	c.Assert(cmdtesting.Stderr(ctx), gc.Equals, "")
+	c.Assert(cmdtesting.Stdout(ctx), gc.Equals, `
+Connecting to database...
+Checking database and replica set health...
+
+Replica set is healthy     ✓
+Running on primary HA node ✓
+
+You are about to copy this controller:
+    Created at:   2020-03-17 16:28:24 +0000 UTC
+    Controller:   dawkins-rules
+    Juju version: 2.9.37
+    Clouds:       666
 
 All restore pre-checks are completed.
 
@@ -244,7 +288,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 Stopping Juju agents...
@@ -307,7 +351,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 This controller is in HA and to restore into it successfully, 'juju-restore' 
@@ -342,7 +386,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 This controller is in HA and to restore into it successfully, 'juju-restore' 
@@ -379,7 +423,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 This controller is in HA and to restore into it successfully, 'juju-restore' 
@@ -414,7 +458,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
@@ -461,7 +505,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 
@@ -507,7 +551,7 @@ Running on primary HA node ✓
 You are about to restore this backup:
     Created at:   2020-03-17 16:28:24 +0000 UTC
     Controller:   how-bizarre
-    Juju version: 2.7.5
+    Juju version: 2.9.37
     Models:       3
 
 Juju agents on secondary controller machines must be stopped by this point.
@@ -689,7 +733,12 @@ func (d *testDatabase) ControllerInfo() (core.ControllerInfo, error) {
 	return d.controllerInfoF()
 }
 
-func (d *testDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory bool) error {
+func (d *testDatabase) CopyController(controller core.ControllerInfo) error {
+	d.AddCall("CopyController", controller)
+	return nil
+}
+
+func (d *testDatabase) RestoreFromDump(dumpDir, logFile string, includeStatusHistory, copyController bool) error {
 	d.Stub.MethodCall(d, "RestoreFromDump", dumpDir, logFile, includeStatusHistory)
 	return d.Stub.NextErr()
 }

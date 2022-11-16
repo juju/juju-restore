@@ -77,7 +77,7 @@ func (s *backupSuite) TestOpenMissingRoot(c *gc.C) {
 	c.Assert(opened, gc.Equals, nil)
 }
 
-func (s *backupSuite) TestMetadata(c *gc.C) {
+func (s *backupSuite) TestMetadataFormatVersion0(c *gc.C) {
 	path := filepath.Join("testdata", "valid-backup.tar.gz")
 	opened, err := backup.Open(path, s.dir)
 	c.Assert(err, jc.ErrorIsNil)
@@ -89,6 +89,7 @@ func (s *backupSuite) TestMetadata(c *gc.C) {
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(metadata, gc.Equals, core.BackupMetadata{
 		FormatVersion:       0,
+		ControllerUUID:      "<unspecified>",
 		ControllerModelUUID: "e2a6a1e5-abea-4393-8593-5a45ae53ab97",
 		JujuVersion:         version.MustParse("2.8-beta1.1"),
 		Series:              "bionic",
@@ -97,6 +98,7 @@ func (s *backupSuite) TestMetadata(c *gc.C) {
 		ContainsLogs:        false,
 		ModelCount:          2,
 		HANodes:             3,
+		CloudCount:          2,
 	})
 }
 
@@ -112,6 +114,7 @@ func (s *backupSuite) TestMetadataFormatVersion1(c *gc.C) {
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(metadata, gc.Equals, core.BackupMetadata{
 		FormatVersion:       1,
+		ControllerUUID:      "bda3b637-7972-47f7-87fd-a3f2d0c748a5",
 		ControllerModelUUID: "1be318f6-9460-4fe1-8eb4-b1df2db23b53",
 		JujuVersion:         version.MustParse("2.8-beta1.1"),
 		Series:              "bionic",
@@ -120,6 +123,7 @@ func (s *backupSuite) TestMetadataFormatVersion1(c *gc.C) {
 		ContainsLogs:        false,
 		ModelCount:          2,
 		HANodes:             3,
+		CloudCount:          2,
 	})
 }
 

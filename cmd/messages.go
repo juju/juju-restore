@@ -17,6 +17,16 @@ The command will check the state of the target database and the details of the
 backup file provided, and restore the contents of the backup into the 
 controller database.
 
+The --copy-controller option is used to clone key aspects of an existing controller
+set up into a new controller. The main reason for using this option is when upgrading Juju.
+This option will prepare a new controller so that models can be migrated off the source controller.
+The target controller will be configured with these options from the source backup:
+- core controller config
+- hosted clouds and credentials
+- users and credentials
+- user controller and cloud permissions
+Note that when copying controller config across, the target controller name, login password,
+CA certificate remain unchanged. 
 `
 
 	dbHealthComplete = `
@@ -41,6 +51,14 @@ You are about to restore this backup:
     Controller:   {{.ControllerModelUUID}}
     Juju version: {{.BackupJujuVersion}}
     Models:       {{.ModelCount}}
+`
+
+	backupFileControllerTemplate = `
+You are about to copy this controller:
+    Created at:   {{.BackupDate}}
+    Controller:   {{.ControllerUUID}}
+    Juju version: {{.BackupJujuVersion}}
+    Clouds:       {{.CloudCount}}
 `
 
 	preChecksCompleted = `
