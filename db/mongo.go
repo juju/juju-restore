@@ -384,6 +384,10 @@ func (db *database) CopyController(controller core.ControllerInfo) error {
 	if err != nil {
 		return errors.Annotate(err, "copying target external controllers")
 	}
+	err = db.copyCollection("secretBackends", "")
+	if err != nil {
+		return errors.Annotate(err, "copying target secret backends")
+	}
 	err = db.copyPermissions(controller)
 	if err != nil {
 		return errors.Annotate(err, "copying target permissions")
@@ -449,6 +453,7 @@ func (db *database) buildControllerRestoreArgs(dumpPath string) []string {
 		"--nsInclude=juju.globalSettings",
 		"--nsInclude=juju.permissions",
 		"--nsInclude=juju.externalControllers",
+		"--nsInclude=juju.secretBackends",
 	}
 	return append(args, dumpPath)
 }
