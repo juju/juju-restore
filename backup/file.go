@@ -109,7 +109,11 @@ func (b *expandedBackup) countModels() (int, error) {
 }
 
 func (b *expandedBackup) countClouds() (int, error) {
-	return countBsonDocs(filepath.Join(b.dir, cloudsFile))
+	count, err := countBsonDocs(filepath.Join(b.dir, cloudsFile))
+	if os.IsNotExist(errors.Cause(err)) {
+		return 0, nil
+	}
+	return count, err
 }
 
 // DumpDirectory returns the path of the contained database dump.

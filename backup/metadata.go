@@ -28,18 +28,28 @@ func readMetadataJSON(directory string) (core.BackupMetadata, error) {
 	defer source.Close()
 	data, err := ioutil.ReadAll(source)
 
-	// Try the current version and check the FormatVersion first.
-	var target flatMetadata
-	err = json.Unmarshal(data, &target)
+	// Read the version first so we can decode known formats explicitly.
+	var versioned struct {
+		FormatVersion int64
+	}
+	err = json.Unmarshal(data, &versioned)
 	if err != nil {
-		return core.BackupMetadata{}, errors.Annotate(err, "unmarshalling v1 metadata")
+		return core.BackupMetadata{}, errors.Annotate(err, "unmarshalling metadata version")
 	}
 
-	if target.FormatVersion > 1 {
-		return core.BackupMetadata{}, errors.Errorf("unsupported backup format version %d", target.FormatVersion)
-	}
-	if target.FormatVersion == 1 {
+	switch versioned.FormatVersion {
+	case 1, 2:
+		var target flatMetadata
+		err = json.Unmarshal(data, &target)
+		if err != nil {
+			return core.BackupMetadata{}, errors.Annotate(err, "unmarshalling v1/v2 metadata")
+		}
 		return flatToBackupMetadata(target), nil
+	case 0:
+		// No FormatVersion set - it must be a version 0 structure
+		// instead.
+	default:
+		return core.BackupMetadata{}, errors.Errorf("unsupported backup format version %d", versioned.FormatVersion)
 	}
 
 	// No FormatVersion set - it must be a version 0 structure
@@ -68,10 +78,7 @@ type flatMetadata struct {
 
 	// file storage
 
-	Checksum       string
-	ChecksumFormat string
-	Size           int64
-	Stored         time.Time
+	Stored time.Time
 
 	// backup
 
